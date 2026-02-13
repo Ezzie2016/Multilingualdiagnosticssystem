@@ -1,8 +1,6 @@
 
   # Multilingual Diagnostics System
 
-  This is a code bundle for Multilingual Diagnostics System. The original project is available at https://www.figma.com/design/BFxwHAUSFKKUEH8OHbm1ba/Multilingual-Diagnostics-System.
-
   ## Running the code
 
   Run `npm i` to install the dependencies.
