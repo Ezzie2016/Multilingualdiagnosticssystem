@@ -60,7 +60,7 @@ npm run dev:client
 Open app:
 ```text
 http://localhost:3000
-```
+```npm run dev:client
 
 ## 5) Verify Backend Health
 
