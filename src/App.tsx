@@ -17,6 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
+/* ─── Types ──────────────────────────────────────────────────────────── */
 export type Language =
   | "en"
   | "es"
@@ -34,12 +35,14 @@ export type Language =
   | "tiv"
   | "ijc"
   | "bin";
+
 export type GenderOption =
   | "female"
   | "male"
   | "non_binary"
   | "prefer_not_to_say"
   | "";
+
 export type AgeRangeOption = "0-12" | "13-17" | "18-35" | "36-55" | "56+";
 
 export interface PatientProfile {
@@ -86,9 +89,82 @@ export interface DiagnosticResult {
   auditTrail?: AuditEntry[];
 }
 
-function App() {
-  type View = "landing" | "diagnostic" | "results" | "history";
+/* ─── Static data ────────────────────────────────────────────────────── */
+const SYSTEM_CARDS = [
+  {
+    title: "Multilingual Intake",
+    description:
+      "Users can submit symptom narratives in 16 interface languages.",
+    icon: Languages,
+    accent: "#0d9488",
+    bg: "#0d948814",
+  },
+  {
+    title: "NLP Extraction",
+    description:
+      "Entities are extracted as symptom, body part, duration, and severity.",
+    icon: Activity,
+    accent: "#0891b2",
+    bg: "#0891b214",
+  },
+  {
+    title: "Hybrid Inference",
+    description:
+      "Runs local model inference first, with graceful fallback controls.",
+    icon: Cpu,
+    accent: "#7c3aed",
+    bg: "#7c3aed14",
+  },
+  {
+    title: "Safety Layer",
+    description:
+      "Rule-based fallback keeps analysis available when model providers fail.",
+    icon: ShieldCheck,
+    accent: "#059669",
+    bg: "#05966914",
+  },
+  {
+    title: "Clinical Transparency",
+    description:
+      "Confidence reflects symptom-pattern fit and language extraction quality, not a final diagnosis.",
+    icon: FileSearch,
+    accent: "#d97706",
+    bg: "#d9770614",
+  },
+] as const;
 
+const STAT_FLOATS = [
+  {
+    label: "Secure & Private",
+    sub: "Local-first storage",
+    dotColor: "#059669",
+    bg: "#ecfdf5",
+  },
+  {
+    label: "16 Languages",
+    sub: "Multilingual intake",
+    dotColor: "#0d9488",
+    bg: "#ccfbf1",
+  },
+  {
+    label: "Instant Analysis",
+    sub: "Real-time NLP",
+    dotColor: "#7c3aed",
+    bg: "#f3e8ff",
+  },
+] as const;
+
+const PROFILE_FIELDS = (result: DiagnosticResult) => [
+  { label: "Patient", value: result.patientName || "Patient" },
+  { label: "Age Range", value: result.patientProfile?.ageRange ?? "N/A" },
+  { label: "Gender", value: result.patientProfile?.gender || "Not provided" },
+  { label: "Language", value: result.language.toUpperCase() },
+];
+
+/* ─── Component ──────────────────────────────────────────────────────── */
+type View = "landing" | "diagnostic" | "results" | "history";
+
+function App() {
   const { user } = useAuth();
 
   const [language, setLanguage] = useState<Language>("en");
@@ -98,7 +174,6 @@ function App() {
   const [latestResult, setLatestResult] = useState<DiagnosticResult | null>(
     null,
   );
-
   const [patientProfile, setPatientProfile] = useState<PatientProfile>({
     ageRange: "18-35",
     gender: "",
@@ -110,9 +185,7 @@ function App() {
     loadSessions()
       .then((sessions) => {
         setHistory(sessions);
-        if (sessions.length > 0) {
-          setLatestResult(sessions[0]);
-        }
+        if (sessions.length > 0) setLatestResult(sessions[0]);
       })
       .finally(() => setHistoryLoading(false));
   }, []);
@@ -120,48 +193,6 @@ function App() {
   useEffect(() => {
     setPatientProfile((prev) => ({ ...prev, language }));
   }, [language]);
-
-  const translations = {
-    en: {
-      subtitle: "AI-Powered NLP Symptom Analysis",
-      tabHistory: "History",
-    },
-  };
-
-  const t = translations.en;
-
-  const systemCards = [
-    {
-      title: "Multilingual Intake",
-      description:
-        "Users can submit symptom narratives in 16 interface languages.",
-      icon: Languages,
-    },
-    {
-      title: "NLP Extraction",
-      description:
-        "Entities are extracted as symptom, body part, duration, and severity.",
-      icon: Activity,
-    },
-    {
-      title: "Hybrid Inference",
-      description:
-        "Runs local model inference first, with graceful fallback controls.",
-      icon: Cpu,
-    },
-    {
-      title: "Safety Layer",
-      description:
-        "Rule-based fallback keeps analysis available when model providers fail.",
-      icon: ShieldCheck,
-    },
-    {
-      title: "Clinical Transparency",
-      description:
-        "Confidence reflects symptom-pattern fit and language extraction quality, not a final diagnosis.",
-      icon: FileSearch,
-    },
-  ];
 
   const handleDiagnosticComplete = (result: DiagnosticResult) => {
     const enrichedResult: DiagnosticResult = {
@@ -182,71 +213,45 @@ function App() {
     setHistory((prev) => [enrichedResult, ...prev]);
     setLatestResult(enrichedResult);
     setView("results");
-
-    if (user) {
-      saveSession(enrichedResult, user.id);
-    }
+    if (user) saveSession(enrichedResult, user.id);
   };
 
+  const navItems: { label: string; view: View; disabled?: boolean }[] = [
+    { label: "Home", view: "landing" },
+    { label: "Diagnostic", view: "diagnostic" },
+    { label: "Results", view: "results", disabled: !latestResult },
+    { label: "History", view: "history" },
+  ];
+
   return (
-    <div className="min-h-screen bg-[#ebf2f9] text-slate-900">
-      <div className="bg-[#118be7] shadow-lg">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-lime-300">
-              <Globe className="h-5 w-5 text-[#116db8]" />
+    <div className="app-shell">
+      {/* ── HEADER ─────────────────────────────────────────────────────── */}
+      <header className="app-header">
+        <div className="header-inner">
+          <button className="logo-btn" onClick={() => setView("landing")}>
+            <div className="logo-mark">
+              <Globe size={18} color="#fff" />
             </div>
             <div>
-              <p className="text-lg font-semibold text-white">MedAssist AI</p>
-              <p className="text-xs text-blue-100">{t.subtitle}</p>
+              <p className="logo-name">MedAssist AI</p>
+              <p className="logo-sub">AI-Powered NLP Symptom Analysis</p>
             </div>
-          </div>
+          </button>
 
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <button
-              onClick={() => setView("landing")}
-              className={`rounded-full px-4 py-2 font-semibold transition-colors ${
-                view === "landing"
-                  ? "bg-white text-[#118be7]"
-                  : "text-white/90 hover:bg-white/15"
-              }`}
-            >
-              Home
-            </button>
-            <button
-              onClick={() => setView("diagnostic")}
-              className={`rounded-full px-4 py-2 font-semibold transition-colors ${
-                view === "diagnostic"
-                  ? "bg-white text-[#118be7]"
-                  : "text-white/90 hover:bg-white/15"
-              }`}
-            >
-              How it works
-            </button>
-            <button
-              onClick={() => setView("results")}
-              disabled={!latestResult}
-              className={`rounded-full px-4 py-2 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                view === "results"
-                  ? "bg-white text-[#118be7]"
-                  : "text-white/90 hover:bg-white/15"
-              }`}
-            >
-              Results
-            </button>
-            <button
-              onClick={() => setView("history")}
-              className={`rounded-full px-4 py-2 font-semibold transition-colors ${
-                view === "history"
-                  ? "bg-white text-[#118be7]"
-                  : "text-white/90 hover:bg-white/15"
-              }`}
-            >
-              {t.tabHistory}
-            </button>
-          </div>
+          <nav className="app-nav">
+            {navItems.map(({ label, view: v, disabled }) => (
+              <button
+                key={v}
+                onClick={() => !disabled && setView(v)}
+                disabled={disabled}
+                className={`nav-pill${view === v ? " active" : ""}`}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
 
-          <div className="flex items-center gap-2">
+          <div className="header-controls">
             <LanguageSelector
               language={language}
               onLanguageChange={setLanguage}
@@ -254,206 +259,263 @@ function App() {
             <UserMenu />
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="mx-auto w-full max-w-7xl px-4 py-6">
-        <div className="mb-6 rounded-xl border border-[#b9ddff] bg-[#dff0ff] px-4 py-3 text-sm text-[#0f4f84]">
-          Clinical disclaimer: This tool provides AI-assisted decision support
-          and is not a substitute for professional medical diagnosis.
-        </div>
+      {/* ── MAIN ───────────────────────────────────────────────────────── */}
+      <main className="app-main">
+        <p className="disclaimer anim-in">
+          <strong>Clinical Disclaimer:</strong> This tool provides AI-assisted
+          decision support and is not a substitute for professional medical
+          diagnosis. Always consult a qualified healthcare professional.
+        </p>
 
+        {/* ── LANDING ────────────────────────────────────────────────── */}
         {view === "landing" && (
-          <div className="space-y-6">
-            <section className="relative overflow-hidden rounded-[28px] border border-[#b7dfff] bg-gradient-to-r from-[#f5f9ff] via-[#edf6ff] to-[#ebf2f9] p-6 shadow-sm lg:p-10">
-              <div className="pointer-events-none absolute bottom-0 left-[52%] top-0 hidden w-8 bg-lime-300/90 lg:block" />
-              <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
+          <div className="landing-page">
+            <section className="hero-card anim-up">
+              <div className="hero-top-bar" />
+              <div className="hero-inner">
                 <div>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-[#9fd0ff] bg-white px-4 py-2 text-sm font-semibold text-[#0b5ca3]">
-                    <Sparkles className="h-4 w-4" />
-                    AI triage support
+                  <div className="hero-badge anim-up anim-up-1">
+                    <Sparkles size={13} color="var(--teal)" />
+                    <span className="hero-badge__text">
+                      AI-Powered Triage Support
+                    </span>
                   </div>
-                  <h1 className="mt-5 text-5xl font-bold leading-[1.02] text-[#1089e4] md:text-6xl">
-                    Your AI Health Companion, Anytime.
+
+                  <h1 className="hero-title anim-up anim-up-2">
+                    Your AI Health
+                    <br />
+                    <em>Companion</em>,<br />
+                    Anytime.
                   </h1>
-                  <div className="mt-6 grid grid-cols-1 gap-3 text-[20px] text-[#0f2940] sm:grid-cols-2">
-                    <p>Analyze your symptoms</p>
-                    <p>Understand your health</p>
-                    <p>Get ready for your visit</p>
-                    <p>Plan your next steps</p>
-                  </div>
-                  <div className="mt-8 flex flex-wrap gap-3">
+
+                  <ul className="hero-bullets anim-up anim-up-3">
+                    {[
+                      "Analyze your symptoms",
+                      "Understand your health",
+                      "Get ready for your visit",
+                      "Plan your next steps",
+                    ].map((item) => (
+                      <li key={item} className="hero-bullet">
+                        <span className="hero-bullet__dot" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="hero-cta-row anim-up anim-up-4">
                     <button
+                      className="btn-cta"
                       onClick={() => setView("diagnostic")}
-                      className="inline-flex items-center gap-2 rounded-xl bg-[#1289e5] px-7 py-3 text-lg font-semibold text-white shadow-md transition-transform hover:-translate-y-0.5"
                     >
-                      Start Advanced Check
-                      <ArrowRight className="h-5 w-5" />
+                      Start Advanced Check <ArrowRight size={16} />
                     </button>
                     <button
+                      className="btn-secondary"
                       onClick={() => setView("history")}
-                      className="rounded-xl border border-slate-300 bg-white px-7 py-3 text-lg font-semibold text-slate-800 shadow-sm"
                     >
                       View History
                     </button>
                   </div>
                 </div>
 
-                <div className="grid gap-4">
-                  <div className="ml-auto w-fit rounded-2xl border border-slate-200 bg-white px-5 py-3 shadow-md">
-                    <p className="text-lg font-semibold text-slate-900">
-                      Secure
-                    </p>
-                  </div>
-                  <div className="mx-auto w-fit rounded-2xl border border-slate-200 bg-white px-5 py-3 shadow-md">
-                    <p className="text-lg font-semibold text-slate-900">
-                      Fast Analysis
-                    </p>
-                  </div>
-                  <div className="mr-auto w-fit rounded-2xl border border-slate-200 bg-white px-5 py-3 shadow-md">
-                    <p className="text-lg font-semibold text-slate-900">
-                      Multilingual Intake
-                    </p>
-                  </div>
+                <div className="stat-floats">
+                  {STAT_FLOATS.map((s, i) => (
+                    <div
+                      key={s.label}
+                      className={`stat-float anim-up anim-up-${i + 2}`}
+                    >
+                      {/*
+                        These two inline styles are intentional exceptions:
+                        they're dynamic per-item color values that cannot be
+                        expressed as static CSS classes without Tailwind's
+                        arbitrary value syntax or CSS-in-JS.
+                      */}
+                      <div
+                        className="stat-float__icon"
+                        style={{ background: s.bg }}
+                      >
+                        <span
+                          className="stat-float__dot"
+                          style={{ background: s.dotColor }}
+                        />
+                      </div>
+                      <div>
+                        <p className="stat-float__name">{s.label}</p>
+                        <p className="stat-float__sub">{s.sub}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </section>
 
-            <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-              {systemCards.map(({ title, description, icon: Icon }) => (
-                <article
-                  key={title}
-                  className="rounded-2xl border border-[#b9defb] bg-white p-5 shadow-sm transition-transform hover:-translate-y-1"
-                >
-                  <div className="inline-flex rounded-lg bg-[#dff0ff] p-2">
-                    <Icon className="h-5 w-5 text-[#118be7]" />
-                  </div>
-                  <h3 className="mt-3 text-lg font-semibold text-slate-900">
-                    {title}
-                  </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                    {description}
-                  </p>
-                </article>
-              ))}
+            <section className="features-section">
+              <span className="section-label">System Capabilities</span>
+              <div className="features-grid">
+                {SYSTEM_CARDS.map(
+                  ({ title, description, icon: Icon, accent, bg }, i) => (
+                    <article
+                      key={title}
+                      className={`feat-card anim-up anim-up-${Math.min(i + 1, 6)}`}
+                    >
+                      {/* Dynamic per-card accent colors — intentional inline style */}
+                      <div
+                        className="feat-card__icon"
+                        style={{ background: bg }}
+                      >
+                        <Icon size={18} color={accent} />
+                      </div>
+                      <h3 className="feat-card__title">{title}</h3>
+                      <p className="feat-card__desc">{description}</p>
+                    </article>
+                  ),
+                )}
+              </div>
             </section>
           </div>
         )}
 
+        {/* ── DIAGNOSTIC ───────────────────────────────────────────────── */}
         {view === "diagnostic" && (
-          <DiagnosticInterface
-            language={language}
-            patientProfile={patientProfile}
-            onPatientProfileChange={setPatientProfile}
-            onDiagnosticComplete={handleDiagnosticComplete}
-          />
+          <div className="anim-up">
+            <DiagnosticInterface
+              language={language}
+              patientProfile={patientProfile}
+              onPatientProfileChange={setPatientProfile}
+              onDiagnosticComplete={handleDiagnosticComplete}
+            />
+          </div>
         )}
 
-        {view === "history" &&
-          (historyLoading ? (
-            <div className="flex items-center justify-center py-20 text-sm text-slate-500">
-              Loading history...
-            </div>
-          ) : (
-            <DiagnosticHistory language={language} history={history} />
-          ))}
+        {/* ── HISTORY ──────────────────────────────────────────────────── */}
+        {view === "history" && (
+          <div className="anim-up">
+            {historyLoading ? (
+              <div className="loading-container">
+                <div className="loading-inner">
+                  <div className="loading-spinner" />
+                  <p className="loading-text">Loading history…</p>
+                </div>
+              </div>
+            ) : (
+              <DiagnosticHistory language={language} history={history} />
+            )}
+          </div>
+        )}
 
+        {/* ── RESULTS ──────────────────────────────────────────────────── */}
         {view === "results" && (
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-[#b9defb] bg-white p-5 shadow-sm">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="results-page anim-in">
+            <div className="card card--padded">
+              <div className="results-header">
                 <div>
-                  <h2 className="text-2xl font-semibold text-slate-900">
-                    Latest Diagnostic Results
-                  </h2>
-                  <p className="text-sm text-slate-600">
+                  <span className="section-label">Analysis Output</span>
+                  <h2 className="results-title">Latest Diagnostic Results</h2>
+                  <p className="results-subtitle">
                     NLP analysis and diagnosis outputs for the current session.
                   </p>
                 </div>
                 <button
+                  className="btn-sm"
                   onClick={() => setView("diagnostic")}
-                  className="inline-flex items-center justify-center rounded-lg bg-[#1289e5] px-4 py-2 text-sm font-semibold text-white"
                 >
+                  <ArrowRight size={14} />
                   Run New Analysis
                 </button>
               </div>
             </div>
 
             {latestResult ? (
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-[#b9defb] bg-white p-5 shadow-sm">
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    Session Profile
-                  </h3>
-                  <div className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-4">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-slate-500">Patient</p>
-                      <p className="font-semibold text-slate-900">
-                        {latestResult.patientName || "Patient"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-slate-500">Age Range</p>
-                      <p className="font-semibold text-slate-900">
-                        {latestResult.patientProfile?.ageRange ?? "N/A"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-slate-500">Gender</p>
-                      <p className="font-semibold text-slate-900">
-                        {latestResult.patientProfile?.gender || "Not provided"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-slate-500">Language</p>
-                      <p className="font-semibold text-slate-900">
-                        {latestResult.language.toUpperCase()}
-                      </p>
-                    </div>
+              <>
+                <div className="card">
+                  <span className="section-label">Session Profile</span>
+                  <div className="profile-grid">
+                    {PROFILE_FIELDS(latestResult).map(({ label, value }) => (
+                      <div key={label} className="profile-cell">
+                        <span className="profile-cell__label">{label}</span>
+                        <p className="profile-cell__value">{value}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
                 <NLPResults result={latestResult} language={language} />
 
-                <div className="rounded-2xl border border-[#b9defb] bg-white p-5 shadow-sm">
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    Audit Trail
-                  </h3>
-                  <div className="mt-3 space-y-2">
-                    {(latestResult.auditTrail ?? []).length === 0 && (
-                      <p className="text-sm text-slate-600">
-                        No audit events yet.
-                      </p>
-                    )}
-                    {(latestResult.auditTrail ?? [])
-                      .slice()
-                      .reverse()
-                      .map((entry, idx) => (
-                        <div
-                          key={`${entry.timestamp instanceof Date ? entry.timestamp.toISOString() : entry.timestamp}-${idx}`}
-                          className="rounded-lg border border-slate-200 bg-slate-50 p-3"
-                        >
-                          <p className="text-xs text-slate-500">
-                            {entry.timestamp instanceof Date
-                              ? entry.timestamp.toLocaleString()
-                              : new Date(entry.timestamp).toLocaleString()}{" "}
-                            - {entry.actor.toUpperCase()} - {entry.action}
-                          </p>
-                          <p className="mt-1 text-sm text-slate-800">
-                            {entry.details}
-                          </p>
-                        </div>
-                      ))}
-                  </div>
+                <div className="card">
+                  <span className="section-label">Audit Trail</span>
+                  {(latestResult.auditTrail ?? []).length === 0 ? (
+                    <p className="loading-text" style={{ marginTop: 14 }}>
+                      No audit events yet.
+                    </p>
+                  ) : (
+                    <div className="audit-list">
+                      {(latestResult.auditTrail ?? [])
+                        .slice()
+                        .reverse()
+                        .map((entry, idx) => (
+                          <div
+                            key={`${
+                              entry.timestamp instanceof Date
+                                ? entry.timestamp.toISOString()
+                                : entry.timestamp
+                            }-${idx}`}
+                            className="audit-row"
+                          >
+                            <p className="audit-row__meta">
+                              {entry.timestamp instanceof Date
+                                ? entry.timestamp.toLocaleString()
+                                : new Date(entry.timestamp).toLocaleString()}
+                              {" · "}
+                              <span className="audit-row__actor">
+                                {entry.actor.toUpperCase()}
+                              </span>
+                              {" · "}
+                              {entry.action}
+                            </p>
+                            <p className="audit-row__detail">{entry.details}</p>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
-              </div>
+              </>
             ) : (
-              <div className="rounded-2xl border border-[#b9defb] bg-white p-8 text-center text-slate-600 shadow-sm">
-                No analysis result selected yet.
+              <div className="card card--center">
+                <div className="empty-state">
+                  <span className="empty-state__icon">🩺</span>
+                  <p className="empty-state__title">
+                    No analysis result selected yet.
+                  </p>
+                  <p className="empty-state__sub">
+                    Run a diagnostic to see results here.
+                  </p>
+                  <button
+                    className="btn-cta empty-state__cta"
+                    onClick={() => setView("diagnostic")}
+                  >
+                    Start Diagnostic <ArrowRight size={15} />
+                  </button>
+                </div>
               </div>
             )}
           </div>
         )}
-      </div>
+      </main>
+
+      {/* ── FOOTER ─────────────────────────────────────────────────────── */}
+      <footer className="app-footer">
+        <div className="footer-inner">
+          <div className="footer-brand">
+            <div className="footer-logo-mark">
+              <Globe size={11} color="#fff" />
+            </div>
+            MedAssist AI — Educational use only. Not a medical device.
+          </div>
+          <span className="footer-version">v0.1.0</span>
+        </div>
+      </footer>
     </div>
   );
 }
