@@ -157,7 +157,16 @@ export function DiagnosticHistory({ language, history }: DiagnosticHistoryProps)
   const t = translations[language] || translations.en;
 
   const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat(language === 'ar' ? 'ar-SA' : language === 'zh' ? 'zh-CN' : language, {
+    const locale =
+      language === 'ar'
+        ? 'ar-SA'
+        : language === 'zh'
+          ? 'zh-CN'
+          : ['en', 'es', 'fr', 'de'].includes(language)
+            ? language
+            : 'en';
+
+    return new Intl.DateTimeFormat(locale, {
       year: 'numeric',
       month: 'long',
       day: 'numeric',

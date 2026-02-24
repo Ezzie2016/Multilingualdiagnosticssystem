@@ -1,11 +1,11 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { DiagnosticInterface } from "./components/DiagnosticInterface";
 import { LanguageSelector } from "./components/LanguageSelector";
 import { DiagnosticHistory } from "./components/DiagnosticHistory";
 import { NLPResults } from "./components/NLPResults";
 import { UserMenu } from "./components/UserMenu";
 import { useAuth } from "./context/AuthContext";
-import { supabase } from "./lib/supabase";
+import { saveSession, loadSessions } from "./utils/sessionStorage";
 import {
   Activity,
   ArrowRight,
@@ -86,59 +86,6 @@ export interface DiagnosticResult {
   auditTrail?: AuditEntry[];
 }
 
-async function saveSessionToSupabase(result: DiagnosticResult, userId: string) {
-  const { error } = await supabase.from("diagnostic_sessions").upsert({
-    id: result.id,
-    user_id: userId,
-    language: result.language,
-    symptoms: result.symptoms,
-    entities: result.entities,
-    diagnoses: result.diagnoses,
-    patient_profile: result.patientProfile ?? null,
-    clinician_review: result.clinicianReview ?? null,
-    audit_trail: (result.auditTrail ?? []).map((e) => ({
-      ...e,
-      timestamp:
-        e.timestamp instanceof Date ? e.timestamp.toISOString() : e.timestamp,
-    })),
-  });
-  if (error) {
-    console.error("Failed to save session to Supabase:", error.message);
-  }
-}
-
-async function loadSessionsFromSupabase(): Promise<DiagnosticResult[]> {
-  const { data, error } = await supabase
-    .from("diagnostic_sessions")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("Failed to load sessions from Supabase:", error.message);
-    return [];
-  }
-
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    timestamp: new Date(row.created_at),
-    language: row.language,
-    symptoms: row.symptoms,
-    entities: row.entities ?? [],
-    diagnoses: row.diagnoses ?? [],
-    patientProfile: row.patient_profile ?? undefined,
-    clinicianReview: row.clinician_review
-      ? {
-          ...row.clinician_review,
-          reviewedAt: new Date(row.clinician_review.reviewedAt),
-        }
-      : undefined,
-    auditTrail: (row.audit_trail ?? []).map((e: any) => ({
-      ...e,
-      timestamp: new Date(e.timestamp),
-    })),
-  }));
-}
-
 function App() {
   type View = "landing" | "diagnostic" | "results" | "history";
 
@@ -160,7 +107,7 @@ function App() {
 
   useEffect(() => {
     setHistoryLoading(true);
-    loadSessionsFromSupabase()
+    loadSessions()
       .then((sessions) => {
         setHistory(sessions);
         if (sessions.length > 0) {
@@ -237,7 +184,7 @@ function App() {
     setView("results");
 
     if (user) {
-      saveSessionToSupabase(enrichedResult, user.id);
+      saveSession(enrichedResult, user.id);
     }
   };
 
