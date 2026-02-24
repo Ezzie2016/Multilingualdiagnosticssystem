@@ -207,14 +207,13 @@ export function DiagnosticInterface({
 
     let diagnosticResult: DiagnosticResult;
     try {
-      diagnosticResult = await analyzeSymptomsViaApi(symptoms, language);
-      // Keep current in-browser engine as a safe fallback for low-confidence/no-match API results.
-      if (!diagnosticResult.diagnoses.length) {
-        diagnosticResult = analyzeSymptoms(symptoms, language);
-      }
-    } catch {
-      diagnosticResult = analyzeSymptoms(symptoms, language);
-    }
+  diagnosticResult = await analyzeSymptomsViaApi(symptoms, language);
+  if (!diagnosticResult.diagnoses.length) {
+    diagnosticResult = analyzeSymptoms(symptoms, language); // frontend fallback
+  }
+} catch {
+  diagnosticResult = analyzeSymptoms(symptoms, language); // frontend fallback
+}
 
     onDiagnosticComplete(diagnosticResult);
     setIsAnalyzing(false);
@@ -225,118 +224,132 @@ export function DiagnosticInterface({
   };
 
   return (
-    <div className="space-y-6">
-      {/* Input Section */}
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="mb-5">
-          <h3 className="text-lg font-semibold text-gray-900">Patient Profile (Pre-EHR)</h3>
-          <p className="text-sm text-gray-600">Captured for session records and export; no hospital integration is performed.</p>
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="text-sm font-semibold text-gray-700">Age Range</label>
-              <select
-                value={patientProfile.ageRange}
-                onChange={(event) =>
-                  onPatientProfileChange({
-                    ...patientProfile,
-                    ageRange: event.target.value as AgeRangeOption
-                  })
-                }
-                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="0-12">0-12</option>
-                <option value="13-17">13-17</option>
-                <option value="18-35">18-35</option>
-                <option value="36-55">36-55</option>
-                <option value="56+">56+</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-semibold text-gray-700">Gender (Optional)</label>
-              <select
-                value={patientProfile.gender}
-                onChange={(event) =>
-                  onPatientProfileChange({
-                    ...patientProfile,
-                    gender: event.target.value as GenderOption
-                  })
-                }
-                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Not provided</option>
-                <option value="female">Female</option>
-                <option value="male">Male</option>
-                <option value="non_binary">Non-binary</option>
-                <option value="prefer_not_to_say">Prefer not to say</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-semibold text-gray-700">Language</label>
-              <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700">
-                {language.toUpperCase()}
+    <div className="space-y-4">
+      <div className="rounded-3xl border border-[#b9defb] bg-white p-5 shadow-sm">
+        <h2 className="text-5xl font-bold leading-tight text-[#1089e4]">AI Symptom Checker</h2>
+        <p className="mt-2 text-2xl leading-tight text-slate-700">
+          Get a preliminary assessment of your symptoms and potential conditions to discuss with your healthcare provider.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.05fr_1.45fr]">
+        <div className="rounded-3xl border border-[#9dcff8] bg-white p-5 shadow-sm">
+          <div className="mb-5">
+            <h3 className="text-lg font-semibold text-slate-900">Patient Profile</h3>
+            <p className="text-sm text-slate-600">Captured for session records and export.</p>
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div>
+                <label className="text-sm font-semibold text-slate-700">Age Range</label>
+                <select
+                  value={patientProfile.ageRange}
+                  onChange={(event) =>
+                    onPatientProfileChange({
+                      ...patientProfile,
+                      ageRange: event.target.value as AgeRangeOption
+                    })
+                  }
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:ring-2 focus:ring-[#118be7] focus:border-transparent"
+                >
+                  <option value="0-12">0-12</option>
+                  <option value="13-17">13-17</option>
+                  <option value="18-35">18-35</option>
+                  <option value="36-55">36-55</option>
+                  <option value="56+">56+</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-slate-700">Gender (Optional)</label>
+                <select
+                  value={patientProfile.gender}
+                  onChange={(event) =>
+                    onPatientProfileChange({
+                      ...patientProfile,
+                      gender: event.target.value as GenderOption
+                    })
+                  }
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:ring-2 focus:ring-[#118be7] focus:border-transparent"
+                >
+                  <option value="">Not provided</option>
+                  <option value="female">Female</option>
+                  <option value="male">Male</option>
+                  <option value="non_binary">Non-binary</option>
+                  <option value="prefer_not_to_say">Prefer not to say</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-slate-700">Language</label>
+                <div className="mt-1 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+                  {language.toUpperCase()}
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <label className="block text-lg font-semibold text-gray-900 mb-3">
-          {t.inputLabel}
-        </label>
-        <textarea
-          value={symptoms}
-          onChange={(e) => setSymptoms(e.target.value)}
-          placeholder={t.inputPlaceholder}
-          rows={6}
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-        />
+          <label className="mb-3 block text-xl font-semibold text-slate-900">
+            {t.inputLabel}
+          </label>
+          <textarea
+            value={symptoms}
+            onChange={(e) => setSymptoms(e.target.value)}
+            placeholder={t.inputPlaceholder}
+            rows={7}
+            className="w-full resize-none rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3 text-base text-slate-800 focus:ring-2 focus:ring-[#118be7] focus:border-transparent"
+          />
 
-        {/* Examples */}
-        <div className="mt-4">
-          <p className="text-sm font-medium text-gray-700 mb-2">{t.examples}</p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => handleExampleClick(t.example1)}
-              className="px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              {t.example1}
-            </button>
-            <button
-              onClick={() => handleExampleClick(t.example2)}
-              className="px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              {t.example2}
-            </button>
-            <button
-              onClick={() => handleExampleClick(t.example3)}
-              className="px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              {t.example3}
-            </button>
+          <div className="mt-4">
+            <p className="mb-2 text-sm font-medium text-slate-700">{t.examples}</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleExampleClick(t.example1)}
+                className="rounded-full border border-[#b9defb] bg-[#e8f5ff] px-3 py-1.5 text-sm text-[#0f5d9d]"
+              >
+                {t.example1}
+              </button>
+              <button
+                onClick={() => handleExampleClick(t.example2)}
+                className="rounded-full border border-[#b9defb] bg-[#e8f5ff] px-3 py-1.5 text-sm text-[#0f5d9d]"
+              >
+                {t.example2}
+              </button>
+              <button
+                onClick={() => handleExampleClick(t.example3)}
+                className="rounded-full border border-[#b9defb] bg-[#e8f5ff] px-3 py-1.5 text-sm text-[#0f5d9d]"
+              >
+                {t.example3}
+              </button>
+            </div>
+          </div>
+
+          <button
+            onClick={handleAnalyze}
+            disabled={!symptoms.trim() || isAnalyzing}
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#118be7] px-6 py-3 text-lg font-semibold text-white shadow-md transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isAnalyzing ? (
+              <>
+                <Loader2 className="h-5 w-5 animate-spin" />
+                {t.analyzing}
+              </>
+            ) : (
+              <>
+                <Send className="h-5 w-5" />
+                {t.analyzeButton}
+              </>
+            )}
+          </button>
+
+          <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+            <p className="text-sm text-amber-800">{t.disclaimer}</p>
           </div>
         </div>
 
-        <button
-          onClick={handleAnalyze}
-          disabled={!symptoms.trim() || isAnalyzing}
-          className="mt-4 w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-6 py-3 rounded-lg font-medium hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-        >
-          {isAnalyzing ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              {t.analyzing}
-            </>
-          ) : (
-            <>
-              <Send className="w-5 h-5" />
-              {t.analyzeButton}
-            </>
-          )}
-        </button>
-
-        {/* Disclaimer */}
-        <div className="mt-4 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-800">{t.disclaimer}</p>
+        <div className="rounded-3xl border border-[#9dcff8] bg-[#edf6ff] p-8 shadow-sm">
+          <div className="flex h-full min-h-[560px] flex-col items-center justify-center text-center">
+            <div className="text-7xl text-[#6f91af]">✧</div>
+            <h3 className="mt-5 text-4xl font-semibold text-slate-700">Your generated content will appear here</h3>
+            <p className="mt-2 text-lg text-slate-600">Fill in the inputs and click Analyze Symptoms</p>
+          </div>
         </div>
       </div>
     </div>

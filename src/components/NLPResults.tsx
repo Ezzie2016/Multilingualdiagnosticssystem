@@ -244,9 +244,9 @@ export function NLPResults({ result, language }: NLPResultsProps) {
   };
 
   const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.7) return 'text-green-600 bg-green-100';
-    if (confidence >= 0.4) return 'text-yellow-600 bg-yellow-100';
-    return 'text-red-600 bg-red-100';
+    if (confidence >= 0.7) return 'text-emerald-700 bg-emerald-100';
+    if (confidence >= 0.4) return 'text-amber-700 bg-amber-100';
+    return 'text-rose-700 bg-rose-100';
   };
 
   const getConfidenceLabel = (confidence: number) => {
@@ -258,10 +258,10 @@ export function NLPResults({ result, language }: NLPResultsProps) {
   return (
     <div className="space-y-6">
       {/* NLP Entity Detection */}
-      <div className="bg-white rounded-2xl shadow-lg p-6">
+      <div className="rounded-2xl border border-[#b9defb] bg-white p-6 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
-          <div className="bg-purple-100 p-2 rounded-lg">
-            <Brain className="w-6 h-6 text-purple-600" />
+          <div className="bg-[#e8f5ff] p-2 rounded-lg">
+            <Brain className="w-6 h-6 text-[#118be7]" />
           </div>
           <h2 className="text-xl font-semibold text-gray-900">{t.nlpAnalysis}</h2>
         </div>
@@ -272,10 +272,10 @@ export function NLPResults({ result, language }: NLPResultsProps) {
             {result.entities.map((entity, index) => (
               <div
                 key={index}
-                className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200"
+                className="flex items-center justify-between rounded-lg border border-[#b9defb] bg-[#edf6ff] p-3"
               >
                 <div className="flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-purple-600" />
+                  <Activity className="w-4 h-4 text-[#118be7]" />
                   <div>
                     <span className="font-medium text-gray-900">{entity.text}</span>
                     <p className="text-xs text-gray-600">
@@ -284,8 +284,8 @@ export function NLPResults({ result, language }: NLPResultsProps) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-purple-600" />
-                  <span className="text-sm font-medium text-purple-600">
+                  <TrendingUp className="w-4 h-4 text-[#118be7]" />
+                  <span className="text-sm font-medium text-[#118be7]">
                     {Math.round(entity.confidence * 100)}%
                   </span>
                 </div>
@@ -296,10 +296,10 @@ export function NLPResults({ result, language }: NLPResultsProps) {
       </div>
 
       {/* Diagnostic Results */}
-      <div className="bg-white rounded-2xl shadow-lg p-6">
+      <div className="rounded-2xl border border-[#b9defb] bg-white p-6 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
-          <div className="bg-blue-100 p-2 rounded-lg">
-            <Activity className="w-6 h-6 text-blue-600" />
+          <div className="bg-[#e8f5ff] p-2 rounded-lg">
+            <Activity className="w-6 h-6 text-[#118be7]" />
           </div>
           <h2 className="text-xl font-semibold text-gray-900">{t.diagnosticResults}</h2>
         </div>
@@ -311,7 +311,7 @@ export function NLPResults({ result, language }: NLPResultsProps) {
           {result.diagnoses.map((diagnosis, index) => (
             <div
               key={index}
-              className="border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow"
+              className="rounded-xl border border-[#c4e4ff] bg-[#fbfdff] p-5 transition-shadow hover:shadow-sm"
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
@@ -335,7 +335,7 @@ export function NLPResults({ result, language }: NLPResultsProps) {
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
-                    className="bg-gradient-to-r from-blue-600 to-cyan-600 h-2 rounded-full transition-all"
+                    className="h-2 rounded-full bg-gradient-to-r from-[#118be7] to-[#47b1ff] transition-all"
                     style={{ width: `${diagnosis.confidence * 100}%` }}
                   />
                 </div>
@@ -350,7 +350,7 @@ export function NLPResults({ result, language }: NLPResultsProps) {
                 <ul className="space-y-2">
                   {diagnosis.recommendations.map((rec, recIndex) => (
                     <li key={recIndex} className="flex items-start gap-2 text-sm text-gray-700">
-                      <span className="text-blue-600 mt-0.5">•</span>
+                      <span className="mt-0.5 text-[#118be7]">•</span>
                       <span>{rec}</span>
                     </li>
                   ))}
@@ -361,9 +361,9 @@ export function NLPResults({ result, language }: NLPResultsProps) {
         </div>
 
         {/* Warning */}
-        <div className="mt-4 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-red-800">
+        <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+          <p className="text-sm text-amber-900">
             {language === 'en' && 'These results are generated by an AI system. Please consult a healthcare professional for proper diagnosis and treatment.'}
             {language === 'es' && 'Estos resultados son generados por un sistema de IA. Consulte a un profesional de la salud para un diagnóstico y tratamiento adecuados.'}
             {language === 'fr' && 'Ces résultats sont générés par un système d\'IA. Veuillez consulter un professionnel de la santé pour un diagnostic et un traitement appropriés.'}

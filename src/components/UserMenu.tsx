@@ -1,4 +1,5 @@
-import { useState } from "react";
+﻿import { useState } from "react";
+import { ChevronDown, LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 export function UserMenu() {
@@ -16,35 +17,43 @@ export function UserMenu() {
   const email = user?.email ?? "";
 
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
+    <div className="relative inline-block">
       <button
         onClick={() => setOpen((prev) => !prev)}
-        style={styles.trigger}
+        className="inline-flex items-center gap-2 rounded-xl border border-white/70 bg-white/95 px-2.5 py-2 text-sm text-[#0f4f84] shadow-sm"
         title={email}
       >
-        <span style={styles.avatar}>{initials}</span>
-        <span style={styles.email}>{email}</span>
-        <span style={{ color: "#4a4e6a", marginLeft: 4 }}>▾</span>
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#118be7] text-xs font-bold text-white">
+          {initials}
+        </span>
+        <span className="hidden max-w-[140px] truncate font-semibold lg:block">{email}</span>
+        <ChevronDown className="h-4 w-4" />
       </button>
 
       {open && (
         <>
-          <div style={styles.backdrop} onClick={() => setOpen(false)} />
-          <div style={styles.dropdown}>
-            <div style={styles.dropdownHeader}>
-              <div style={styles.avatarLarge}>{initials}</div>
+          <button
+            aria-label="Close menu"
+            className="fixed inset-0 z-10 bg-transparent"
+            onClick={() => setOpen(false)}
+          />
+          <div className="absolute right-0 top-[calc(100%+10px)] z-20 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+            <div className="flex items-center gap-3 border-b border-slate-100 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#118be7] text-sm font-bold text-white">
+                {initials}
+              </div>
               <div>
-                <div style={styles.dropdownEmail}>{email}</div>
-                <div style={styles.dropdownRole}>Clinician</div>
+                <p className="max-w-[170px] truncate text-sm font-semibold text-slate-900">{email}</p>
+                <p className="text-xs text-slate-500">Clinician</p>
               </div>
             </div>
-            <div style={styles.divider} />
             <button
               onClick={handleSignOut}
               disabled={loggingOut}
-              style={styles.signOutBtn}
+              className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
             >
-              {loggingOut ? "Signing out..." : "→  Sign Out"}
+              <LogOut className="h-4 w-4" />
+              {loggingOut ? "Signing out..." : "Sign out"}
             </button>
           </div>
         </>
@@ -52,104 +61,3 @@ export function UserMenu() {
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  trigger: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    background: "rgba(14,14,24,0.8)",
-    border: "1px solid rgba(0,229,180,0.15)",
-    borderRadius: 10,
-    padding: "6px 12px 6px 6px",
-    cursor: "pointer",
-    color: "#8b8fa8",
-    fontSize: 13,
-  },
-  avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: "50%",
-    background: "linear-gradient(135deg, #00e5b4, #00b4d8)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#080810",
-    fontWeight: 700,
-    fontSize: 11,
-  },
-  email: {
-    maxWidth: 150,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  backdrop: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 10,
-  },
-  dropdown: {
-    position: "absolute",
-    right: 0,
-    top: "calc(100% + 8px)",
-    width: 240,
-    background: "#0e0e18",
-    border: "1px solid rgba(0,229,180,0.15)",
-    borderRadius: 12,
-    boxShadow: "0 16px 40px rgba(0,0,0,0.6)",
-    zIndex: 11,
-    overflow: "hidden",
-  },
-  dropdownHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    padding: "16px",
-  },
-  avatarLarge: {
-    width: 38,
-    height: 38,
-    borderRadius: "50%",
-    background: "linear-gradient(135deg, #00e5b4, #00b4d8)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#080810",
-    fontWeight: 700,
-    fontSize: 14,
-    flexShrink: 0,
-  },
-  dropdownEmail: {
-    color: "#e8eaf6",
-    fontSize: 13,
-    fontWeight: 500,
-    maxWidth: 160,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  dropdownRole: {
-    color: "#4a4e6a",
-    fontSize: 11,
-    marginTop: 2,
-    letterSpacing: "0.05em",
-    textTransform: "uppercase",
-  },
-  divider: {
-    height: 1,
-    background: "rgba(255,255,255,0.06)",
-  },
-  signOutBtn: {
-    display: "block",
-    width: "100%",
-    padding: "12px 16px",
-    background: "none",
-    border: "none",
-    textAlign: "left",
-    color: "#ff6b8a",
-    fontSize: 13,
-    cursor: "pointer",
-    transition: "background 0.15s",
-  },
-};
