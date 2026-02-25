@@ -4,14 +4,12 @@ import { LanguageSelector } from "./components/LanguageSelector";
 import { DiagnosticHistory } from "./components/DiagnosticHistory";
 import { NLPResults } from "./components/NLPResults";
 import { UserMenu } from "./components/UserMenu";
-import { useAuth } from "./context/AuthContext";
-import { saveSession, loadSessions } from "./utils/sessionStorage";
+import { useTranslations } from "./utils/translations";
 import {
   Activity,
   ArrowRight,
   Cpu,
   FileSearch,
-  Globe,
   Languages,
   ShieldCheck,
   Sparkles,
@@ -51,14 +49,6 @@ export interface PatientProfile {
   language: Language;
 }
 
-export interface ClinicianReview {
-  reviewerId: string;
-  reviewerName: string;
-  notes: string;
-  reviewedAt: Date;
-  confidenceOverrides: Record<number, number>;
-}
-
 export interface AuditEntry {
   timestamp: Date;
   actor: "system" | "patient" | "doctor";
@@ -68,7 +58,7 @@ export interface AuditEntry {
 
 export interface DiagnosticResult {
   id: string;
-  timestamp: Date;
+  timestamp: Date | string;
   language: Language;
   symptoms: string;
   diagnoses: {
@@ -85,88 +75,13 @@ export interface DiagnosticResult {
   patientId?: string;
   patientName?: string;
   patientProfile?: PatientProfile;
-  clinicianReview?: ClinicianReview;
   auditTrail?: AuditEntry[];
 }
 
-/* ─── Static data ────────────────────────────────────────────────────── */
-const SYSTEM_CARDS = [
-  {
-    title: "Multilingual Intake",
-    description:
-      "Users can submit symptom narratives in 16 interface languages.",
-    icon: Languages,
-    accent: "#0d9488",
-    bg: "#0d948814",
-  },
-  {
-    title: "NLP Extraction",
-    description:
-      "Entities are extracted as symptom, body part, duration, and severity.",
-    icon: Activity,
-    accent: "#0891b2",
-    bg: "#0891b214",
-  },
-  {
-    title: "Hybrid Inference",
-    description:
-      "Runs local model inference first, with graceful fallback controls.",
-    icon: Cpu,
-    accent: "#7c3aed",
-    bg: "#7c3aed14",
-  },
-  {
-    title: "Safety Layer",
-    description:
-      "Rule-based fallback keeps analysis available when model providers fail.",
-    icon: ShieldCheck,
-    accent: "#059669",
-    bg: "#05966914",
-  },
-  {
-    title: "Clinical Transparency",
-    description:
-      "Confidence reflects symptom-pattern fit and language extraction quality, not a final diagnosis.",
-    icon: FileSearch,
-    accent: "#d97706",
-    bg: "#d9770614",
-  },
-] as const;
-
-const STAT_FLOATS = [
-  {
-    label: "Secure & Private",
-    sub: "Local-first storage",
-    dotColor: "#059669",
-    bg: "#ecfdf5",
-  },
-  {
-    label: "16 Languages",
-    sub: "Multilingual intake",
-    dotColor: "#0d9488",
-    bg: "#ccfbf1",
-  },
-  {
-    label: "Instant Analysis",
-    sub: "Real-time NLP",
-    dotColor: "#7c3aed",
-    bg: "#f3e8ff",
-  },
-] as const;
-
-const PROFILE_FIELDS = (result: DiagnosticResult) => [
-  { label: "Patient", value: result.patientName || "Patient" },
-  { label: "Age Range", value: result.patientProfile?.ageRange ?? "N/A" },
-  { label: "Gender", value: result.patientProfile?.gender || "Not provided" },
-  { label: "Language", value: result.language.toUpperCase() },
-];
-
-/* ─── Component ──────────────────────────────────────────────────────── */
 type View = "landing" | "diagnostic" | "results" | "history";
 
+/* ─── Component ──────────────────────────────────────────────────────── */
 function App() {
-  const { user } = useAuth();
-
   const [language, setLanguage] = useState<Language>("en");
   const [history, setHistory] = useState<DiagnosticResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -180,14 +95,26 @@ function App() {
     language: "en",
   });
 
+  // All UI strings for the current language
+  const t = useTranslations(language);
+
+  // RTL support for Arabic
+  useEffect(() => {
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+  }, [language]);
+
   useEffect(() => {
     setHistoryLoading(true);
-    loadSessions()
-      .then((sessions) => {
-        setHistory(sessions);
-        if (sessions.length > 0) setLatestResult(sessions[0]);
-      })
-      .finally(() => setHistoryLoading(false));
+    try {
+      const raw = localStorage.getItem("mds_sessions");
+      const sessions: DiagnosticResult[] = raw ? JSON.parse(raw) : [];
+      setHistory(sessions);
+      if (sessions.length > 0) setLatestResult(sessions[0]);
+    } catch {
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -195,7 +122,7 @@ function App() {
   }, [language]);
 
   const handleDiagnosticComplete = (result: DiagnosticResult) => {
-    const enrichedResult: DiagnosticResult = {
+    const enriched: DiagnosticResult = {
       ...result,
       patientName: result.patientName ?? "Patient",
       patientProfile: { ...patientProfile, language },
@@ -209,18 +136,82 @@ function App() {
         },
       ],
     };
-
-    setHistory((prev) => [enrichedResult, ...prev]);
-    setLatestResult(enrichedResult);
+    const updated = [enriched, ...history];
+    setHistory(updated);
+    setLatestResult(enriched);
     setView("results");
-    if (user) saveSession(enrichedResult, user.id);
+    try {
+      localStorage.setItem(
+        "mds_sessions",
+        JSON.stringify(updated.slice(0, 100)),
+      );
+    } catch {}
   };
 
-  const navItems: { label: string; view: View; disabled?: boolean }[] = [
-    { label: "Home", view: "landing" },
-    { label: "Diagnostic", view: "diagnostic" },
-    { label: "Results", view: "results", disabled: !latestResult },
-    { label: "History", view: "history" },
+  const navItems = [
+    { label: t.navHome, view: "landing" as View },
+    { label: t.navDiagnostic, view: "diagnostic" as View },
+    { label: t.navResults, view: "results" as View, disabled: !latestResult },
+    { label: t.navHistory, view: "history" as View },
+  ];
+
+  const SYSTEM_CARDS = [
+    {
+      title: t.feat1Title,
+      description: t.feat1Desc,
+      icon: Languages,
+      accent: "#0d9488",
+      bg: "#0d948814",
+    },
+    {
+      title: t.feat2Title,
+      description: t.feat2Desc,
+      icon: Activity,
+      accent: "#0891b2",
+      bg: "#0891b214",
+    },
+    {
+      title: t.feat3Title,
+      description: t.feat3Desc,
+      icon: Cpu,
+      accent: "#7c3aed",
+      bg: "#7c3aed14",
+    },
+    {
+      title: t.feat4Title,
+      description: t.feat4Desc,
+      icon: ShieldCheck,
+      accent: "#059669",
+      bg: "#05966914",
+    },
+    {
+      title: t.feat5Title,
+      description: t.feat5Desc,
+      icon: FileSearch,
+      accent: "#d97706",
+      bg: "#d9770614",
+    },
+  ];
+
+  const STAT_FLOATS = [
+    {
+      label: t.stat1Label,
+      sub: t.stat1Sub,
+      dotColor: "#059669",
+      bg: "#ecfdf5",
+    },
+    {
+      label: t.stat2Label,
+      sub: t.stat2Sub,
+      dotColor: "#0d9488",
+      bg: "#ccfbf1",
+    },
+    {
+      label: t.stat3Label,
+      sub: t.stat3Sub,
+      dotColor: "#7c3aed",
+      bg: "#f3e8ff",
+    },
   ];
 
   return (
@@ -230,11 +221,13 @@ function App() {
         <div className="header-inner">
           <button className="logo-btn" onClick={() => setView("landing")}>
             <div className="logo-mark">
-              <Globe size={18} color="#fff" />
+              <span style={{ fontSize: 18, color: "#fff", lineHeight: 1 }}>
+                ⬡
+              </span>
             </div>
             <div>
-              <p className="logo-name">MedAssist AI</p>
-              <p className="logo-sub">AI-Powered NLP Symptom Analysis</p>
+              <p className="logo-name">MediLingua</p>
+              <p className="logo-sub">{t.logoSub}</p>
             </div>
           </button>
 
@@ -264,12 +257,10 @@ function App() {
       {/* ── MAIN ───────────────────────────────────────────────────────── */}
       <main className="app-main">
         <p className="disclaimer anim-in">
-          <strong>Clinical Disclaimer:</strong> This tool provides AI-assisted
-          decision support and is not a substitute for professional medical
-          diagnosis. Always consult a qualified healthcare professional.
+          <strong>{t.disclaimerLabel}</strong> {t.disclaimerText}
         </p>
 
-        {/* ── LANDING ────────────────────────────────────────────────── */}
+        {/* ── LANDING ──────────────────────────────────────────────────── */}
         {view === "landing" && (
           <div className="landing-page">
             <section className="hero-card anim-up">
@@ -278,44 +269,36 @@ function App() {
                 <div>
                   <div className="hero-badge anim-up anim-up-1">
                     <Sparkles size={13} color="var(--teal)" />
-                    <span className="hero-badge__text">
-                      AI-Powered Triage Support
-                    </span>
+                    <span className="hero-badge__text">{t.badgeText}</span>
                   </div>
-
                   <h1 className="hero-title anim-up anim-up-2">
-                    Your AI Health
+                    {t.heroLine1}
                     <br />
-                    <em>Companion</em>,<br />
-                    Anytime.
+                    <em>{t.heroLine2}</em>,<br />
+                    {t.heroLine3}
                   </h1>
-
                   <ul className="hero-bullets anim-up anim-up-3">
-                    {[
-                      "Analyze your symptoms",
-                      "Understand your health",
-                      "Get ready for your visit",
-                      "Plan your next steps",
-                    ].map((item) => (
-                      <li key={item} className="hero-bullet">
-                        <span className="hero-bullet__dot" />
-                        {item}
-                      </li>
-                    ))}
+                    {[t.bullet1, t.bullet2, t.bullet3, t.bullet4].map(
+                      (item) => (
+                        <li key={item} className="hero-bullet">
+                          <span className="hero-bullet__dot" />
+                          {item}
+                        </li>
+                      ),
+                    )}
                   </ul>
-
                   <div className="hero-cta-row anim-up anim-up-4">
                     <button
                       className="btn-cta"
                       onClick={() => setView("diagnostic")}
                     >
-                      Start Advanced Check <ArrowRight size={16} />
+                      {t.ctaStart} <ArrowRight size={16} />
                     </button>
                     <button
                       className="btn-secondary"
                       onClick={() => setView("history")}
                     >
-                      View History
+                      {t.ctaHistory}
                     </button>
                   </div>
                 </div>
@@ -326,12 +309,6 @@ function App() {
                       key={s.label}
                       className={`stat-float anim-up anim-up-${i + 2}`}
                     >
-                      {/*
-                        These two inline styles are intentional exceptions:
-                        they're dynamic per-item color values that cannot be
-                        expressed as static CSS classes without Tailwind's
-                        arbitrary value syntax or CSS-in-JS.
-                      */}
                       <div
                         className="stat-float__icon"
                         style={{ background: s.bg }}
@@ -352,7 +329,7 @@ function App() {
             </section>
 
             <section className="features-section">
-              <span className="section-label">System Capabilities</span>
+              <span className="section-label">{t.featuresTitle}</span>
               <div className="features-grid">
                 {SYSTEM_CARDS.map(
                   ({ title, description, icon: Icon, accent, bg }, i) => (
@@ -360,7 +337,6 @@ function App() {
                       key={title}
                       className={`feat-card anim-up anim-up-${Math.min(i + 1, 6)}`}
                     >
-                      {/* Dynamic per-card accent colors — intentional inline style */}
                       <div
                         className="feat-card__icon"
                         style={{ background: bg }}
@@ -396,7 +372,7 @@ function App() {
               <div className="loading-container">
                 <div className="loading-inner">
                   <div className="loading-spinner" />
-                  <p className="loading-text">Loading history…</p>
+                  <p className="loading-text">{t.loadingHistory}</p>
                 </div>
               </div>
             ) : (
@@ -411,18 +387,15 @@ function App() {
             <div className="card card--padded">
               <div className="results-header">
                 <div>
-                  <span className="section-label">Analysis Output</span>
-                  <h2 className="results-title">Latest Diagnostic Results</h2>
-                  <p className="results-subtitle">
-                    NLP analysis and diagnosis outputs for the current session.
-                  </p>
+                  <span className="section-label">{t.resultsSection}</span>
+                  <h2 className="results-title">{t.resultsTitle}</h2>
+                  <p className="results-subtitle">{t.resultsSub}</p>
                 </div>
                 <button
                   className="btn-sm"
                   onClick={() => setView("diagnostic")}
                 >
-                  <ArrowRight size={14} />
-                  Run New Analysis
+                  <ArrowRight size={14} /> {t.runNewAnalysis}
                 </button>
               </div>
             </div>
@@ -430,9 +403,28 @@ function App() {
             {latestResult ? (
               <>
                 <div className="card">
-                  <span className="section-label">Session Profile</span>
+                  <span className="section-label">{t.sessionProfile}</span>
                   <div className="profile-grid">
-                    {PROFILE_FIELDS(latestResult).map(({ label, value }) => (
+                    {[
+                      {
+                        label: t.profilePatient,
+                        value: latestResult.patientName || "Patient",
+                      },
+                      {
+                        label: t.profileAge,
+                        value: latestResult.patientProfile?.ageRange ?? "N/A",
+                      },
+                      {
+                        label: t.profileGender,
+                        value:
+                          latestResult.patientProfile?.gender ||
+                          t.profileGenderNA,
+                      },
+                      {
+                        label: t.profileLanguage,
+                        value: latestResult.language.toUpperCase(),
+                      },
+                    ].map(({ label, value }) => (
                       <div key={label} className="profile-cell">
                         <span className="profile-cell__label">{label}</span>
                         <p className="profile-cell__value">{value}</p>
@@ -444,10 +436,10 @@ function App() {
                 <NLPResults result={latestResult} language={language} />
 
                 <div className="card">
-                  <span className="section-label">Audit Trail</span>
+                  <span className="section-label">{t.auditTrail}</span>
                   {(latestResult.auditTrail ?? []).length === 0 ? (
                     <p className="loading-text" style={{ marginTop: 14 }}>
-                      No audit events yet.
+                      {t.auditEmpty}
                     </p>
                   ) : (
                     <div className="audit-list">
@@ -456,11 +448,7 @@ function App() {
                         .reverse()
                         .map((entry, idx) => (
                           <div
-                            key={`${
-                              entry.timestamp instanceof Date
-                                ? entry.timestamp.toISOString()
-                                : entry.timestamp
-                            }-${idx}`}
+                            key={`${entry.timestamp instanceof Date ? entry.timestamp.toISOString() : entry.timestamp}-${idx}`}
                             className="audit-row"
                           >
                             <p className="audit-row__meta">
@@ -485,17 +473,13 @@ function App() {
               <div className="card card--center">
                 <div className="empty-state">
                   <span className="empty-state__icon">🩺</span>
-                  <p className="empty-state__title">
-                    No analysis result selected yet.
-                  </p>
-                  <p className="empty-state__sub">
-                    Run a diagnostic to see results here.
-                  </p>
+                  <p className="empty-state__title">{t.emptyResultTitle}</p>
+                  <p className="empty-state__sub">{t.emptyResultSub}</p>
                   <button
                     className="btn-cta empty-state__cta"
                     onClick={() => setView("diagnostic")}
                   >
-                    Start Diagnostic <ArrowRight size={15} />
+                    {t.startDiagnostic} <ArrowRight size={15} />
                   </button>
                 </div>
               </div>
@@ -509,9 +493,11 @@ function App() {
         <div className="footer-inner">
           <div className="footer-brand">
             <div className="footer-logo-mark">
-              <Globe size={11} color="#fff" />
+              <span style={{ fontSize: 11, color: "#fff", lineHeight: 1 }}>
+                ⬡
+              </span>
             </div>
-            MedAssist AI — Educational use only. Not a medical device.
+            {t.footerText}
           </div>
           <span className="footer-version">v0.1.0</span>
         </div>

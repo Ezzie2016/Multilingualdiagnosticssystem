@@ -1,357 +1,541 @@
-import { useState } from 'react';
-import { AgeRangeOption, DiagnosticResult, GenderOption, Language, PatientProfile } from '../App';
-import { Send, Loader2, AlertCircle } from 'lucide-react';
-import { analyzeSymptoms } from '../utils/nlpEngine';
-import { analyzeSymptomsViaApi } from '../utils/nlpApi';
+import { useCallback, useRef, useState } from "react";
+import { detectLanguage } from "../utils/detectLanguage";
+import { useTranslations } from "../utils/translations";
+import { LanguageSelector } from "./LanguageSelector";
 
-interface DiagnosticInterfaceProps {
-  language: Language;
-  patientProfile: PatientProfile;
-  onPatientProfileChange: (profile: PatientProfile) => void;
+interface Entity {
+  text: string;
+  type: "symptom" | "body_part" | "duration" | "severity";
+  confidence: number;
+}
+
+interface Diagnosis {
+  condition: string;
+  confidence: number;
+  description: string;
+  recommendations: string[];
+}
+
+export interface DiagnosticResult {
+  id: string;
+  timestamp: string | Date;
+  language: string;
+  symptoms: string;
+  entities: Entity[];
+  diagnoses: Diagnosis[];
+  patientName?: string;
+  patientProfile?: { ageRange: string; gender: string; language: string };
+  auditTrail?: {
+    timestamp: Date;
+    actor: "system" | "patient" | "doctor";
+    action: string;
+    details: string;
+  }[];
+}
+
+async function analyzeSymptoms(
+  symptoms: string,
+  language: string,
+): Promise<DiagnosticResult> {
+  const res = await fetch("/api/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symptoms, language }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+interface Props {
+  language?: string;
+  patientProfile?: { ageRange: string; gender: string; language: string };
+  onPatientProfileChange?: (p: {
+    ageRange: string;
+    gender: string;
+    language: string;
+  }) => void;
   onDiagnosticComplete: (result: DiagnosticResult) => void;
 }
 
-export function DiagnosticInterface({
-  language,
-  patientProfile,
-  onPatientProfileChange,
-  onDiagnosticComplete
-}: DiagnosticInterfaceProps) {
-  const [symptoms, setSymptoms] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+const EXAMPLE_PROMPTS: Record<string, string[]> = {
+  en: [
+    "I have severe chest pain radiating to my left arm for 2 hours with shortness of breath",
+    "Persistent headache and fever for 3 days, mild nausea in the mornings",
+    "Sharp abdominal pain lower right side, started yesterday, getting worse",
+    "Extreme fatigue, dizziness when standing, muscle weakness for 1 week",
+  ],
+  es: [
+    "Tengo dolor de pecho severo que se irradia al brazo izquierdo desde hace 2 horas con dificultad para respirar",
+    "Dolor de cabeza persistente y fiebre por 3 días, náuseas leves por las mañanas",
+    "Dolor abdominal agudo en el lado inferior derecho, comenzó ayer, empeorando",
+    "Fatiga extrema, mareos al levantarse, debilidad muscular por 1 semana",
+  ],
+  fr: [
+    "J'ai une douleur thoracique sévère irradiant vers le bras gauche depuis 2 heures avec essoufflement",
+    "Maux de tête persistants et fièvre depuis 3 jours, légères nausées le matin",
+    "Douleur abdominale aiguë côté inférieur droit, commencée hier, s'aggravant",
+    "Fatigue extrême, vertiges en se levant, faiblesse musculaire depuis 1 semaine",
+  ],
+  de: [
+    "Ich habe seit 2 Stunden starke Brustschmerzen, die in den linken Arm ausstrahlen, mit Atemnot",
+    "Anhaltende Kopfschmerzen und Fieber seit 3 Tagen, leichte Übelkeit am Morgen",
+    "Stechende Bauchschmerzen rechts unten, seit gestern, werden schlimmer",
+    "Extreme Müdigkeit, Schwindel beim Aufstehen, Muskelschwäche seit 1 Woche",
+  ],
+  ar: [
+    "لدي ألم شديد في الصدر يمتد إلى ذراعي اليسرى منذ ساعتين مع ضيق في التنفس",
+    "صداع مستمر وحمى منذ 3 أيام وغثيان خفيف في الصباح",
+    "ألم حاد في البطن في الجانب الأيمن السفلي بدأ أمس ويزداد سوءًا",
+    "إرهاق شديد ودوخة عند الوقوف وضعف عضلي منذ أسبوع",
+  ],
+  zh: [
+    "我左臂有放射性胸痛已经2小时，伴有呼吸急促",
+    "持续头痛和发烧3天，早晨轻微恶心",
+    "右下腹剧烈疼痛，昨天开始，越来越严重",
+    "极度疲劳，站立时头晕，肌肉无力持续1周",
+  ],
+};
 
-  const translations = {
-    en: {
-      inputLabel: 'Describe Your Symptoms',
-      inputPlaceholder: 'Example: I have a severe headache for 3 days, fever, and sore throat...',
-      analyzeButton: 'Analyze Symptoms',
-      analyzing: 'Analyzing...',
-      disclaimer: 'This is an AI-powered diagnostic tool and should not replace professional medical advice.',
-      examples: 'Examples:',
-      example1: 'I have a persistent cough and chest pain',
-      example2: 'Experiencing dizziness and nausea for 2 hours',
-      example3: 'Sharp pain in lower back when bending'
-    },
-    es: {
-      inputLabel: 'Describa Sus Síntomas',
-      inputPlaceholder: 'Ejemplo: Tengo un dolor de cabeza severo durante 3 días, fiebre y dolor de garganta...',
-      analyzeButton: 'Analizar Síntomas',
-      analyzing: 'Analizando...',
-      disclaimer: 'Esta es una herramienta de diagnóstico con IA y no debe reemplazar el consejo médico profesional.',
-      examples: 'Ejemplos:',
-      example1: 'Tengo tos persistente y dolor en el pecho',
-      example2: 'Experimentando mareos y náuseas durante 2 horas',
-      example3: 'Dolor agudo en la parte baja de la espalda al doblarme'
-    },
-    fr: {
-      inputLabel: 'Décrivez Vos Symptômes',
-      inputPlaceholder: 'Exemple: J\'ai un mal de tête sévère depuis 3 jours, de la fièvre et un mal de gorge...',
-      analyzeButton: 'Analyser les Symptômes',
-      analyzing: 'Analyse en cours...',
-      disclaimer: 'Ceci est un outil de diagnostic alimenté par l\'IA et ne doit pas remplacer un avis médical professionnel.',
-      examples: 'Exemples:',
-      example1: 'J\'ai une toux persistante et des douleurs thoraciques',
-      example2: 'Je ressens des étourdissements et des nausées depuis 2 heures',
-      example3: 'Douleur aiguë dans le bas du dos en me penchant'
-    },
-    de: {
-      inputLabel: 'Beschreiben Sie Ihre Symptome',
-      inputPlaceholder: 'Beispiel: Ich habe seit 3 Tagen starke Kopfschmerzen, Fieber und Halsschmerzen...',
-      analyzeButton: 'Symptome Analysieren',
-      analyzing: 'Analysiere...',
-      disclaimer: 'Dies ist ein KI-gestütztes Diagnosetool und sollte professionellen medizinischen Rat nicht ersetzen.',
-      examples: 'Beispiele:',
-      example1: 'Ich habe anhaltenden Husten und Brustschmerzen',
-      example2: 'Seit 2 Stunden Schwindel und Übelkeit',
-      example3: 'Stechender Schmerz im unteren Rücken beim Bücken'
-    },
-    zh: {
-      inputLabel: '描述您的症状',
-      inputPlaceholder: '例如：我已经头痛3天了，还有发烧和喉咙痛...',
-      analyzeButton: '分析症状',
-      analyzing: '分析中...',
-      disclaimer: '这是一个AI诊断工具，不应替代专业医疗建议。',
-      examples: '示例：',
-      example1: '我持续咳嗽并且胸痛',
-      example2: '头晕和恶心已经2小时了',
-      example3: '弯腰时下背部剧痛'
-    },
-    ar: {
-      inputLabel: 'صف أعراضك',
-      inputPlaceholder: 'مثال: لدي صداع شديد منذ 3 أيام، حمى، والتهاب في الحلق...',
-      analyzeButton: 'تحليل الأعراض',
-      analyzing: 'جاري التحليل...',
-      disclaimer: 'هذه أداة تشخيصية مدعومة بالذكاء الاصطناعي ولا ينبغي أن تحل محل المشورة الطبية المهنية.',
-      examples: 'أمثلة:',
-      example1: 'لدي سعال مستمر وألم في الصدر',
-      example2: 'أشعر بالدوار والغثيان منذ ساعتين',
-      example3: 'ألم حاد في أسفل الظهر عند الانحناء'
-    },
-    ha: {
-      inputLabel: 'Bayyana Alamun Rashin Lafiyarka',
-      inputPlaceholder: 'Misali: Ina da ciwon kai mai tsanani kwana 3, zazzabi, da ciwon makogwaro...',
-      analyzeButton: 'Bincika Alamun',
-      analyzing: 'Ana Bincikewa...',
-      disclaimer: 'Wannan kayan aikin bincike ne wanda AI ke gudanarwa kuma bai kamata ya maye gurbin shawarar likita ba.',
-      examples: 'Misalai:',
-      example1: 'Ina da tari mai dawwama da ciwon kirji',
-      example2: 'Ina jin suma da tashin zuciya na awanni 2',
-      example3: 'Ciwon baya mai kaifi lokacin sunkuyarwa'
-    },
-    yo: {
-      inputLabel: 'Ṣe Apejuwe Awọn Ami-aisan Rẹ',
-      inputPlaceholder: 'Apẹẹrẹ: Mo ni irori ori nla fun ọjọ 3, iba, ati ọfun ọfun...',
-      analyzeButton: 'Ṣe Itupalẹ Awọn Ami',
-      analyzing: 'N ṣe Itupalẹ...',
-      disclaimer: 'Eyi jẹ ohun elo iwadii ti AI ṣe ati pe ko yẹ ki o ropo imọran oṣiṣẹ ilera alamọdaju.',
-      examples: 'Awọn Apẹẹrẹ:',
-      example1: 'Mo ni ikọ ti o tẹsiwaju ati irora ọkan',
-      example2: 'Mo n ni irora ori ati ikorira fun wakati 2',
-      example3: 'Irora didasilẹ ni ẹhin isalẹ nigbati mo ba tẹ'
-    },
-    ig: {
-      inputLabel: 'Kọwaa Mgbaàmà Ọrịa Gị',
-      inputPlaceholder: 'Ọmụmaatụ: Enwere m isi ọwụwa siri ike ụbọchị 3, ahụ ọkụ, na akpịrị mgbu...',
-      analyzeButton: 'Nyochaa Mgbaàmà',
-      analyzing: 'Na-enyocha...',
-      disclaimer: 'Nke a bụ ngwa nyocha AI na ekwesịghị ịnọchi ọrụ ndụmọdụ dọkịta ọkachamara.',
-      examples: 'Ọmụmaatụ:',
-      example1: 'Enwere m ụkwara na-adịgide adịgide na mgbu obi',
-      example2: 'Ana m enwe isi ọwụwa na ọgbụgbọ awa 2',
-      example3: 'Mgbu dị nkọ n\'azụ mgbe m na-ehulata'
-    },
-    pcm: {
-      inputLabel: 'Talk Wetin Dey Worry You',
-      inputPlaceholder: 'Example: I get serious headache for 3 days, fever, and sore throat...',
-      analyzeButton: 'Check Am',
-      analyzing: 'Dey Check Am...',
-      disclaimer: 'Na AI tool be dis and e no suppose replace proper doctor advice.',
-      examples: 'Examples:',
-      example1: 'I get cough wey no wan stop and chest pain',
-      example2: 'My head dey turn and belle dey pain me for 2 hours',
-      example3: 'Sharp pain for my back when I bend'
-    },
-    ff: {
-      inputLabel: 'Hollir Siifto-yejji Maa',
-      inputPlaceholder: 'Wano: Mi heɓii hoore yejjitee sukaaɓe 3, jummirde, e yejji kunnde...',
-      analyzeButton: 'Yiyto Siiftooji',
-      analyzing: 'Ko Yiytaa...',
-      disclaimer: 'Oo ko kuutorgal AI kadi foti woppude anniyagol jiyaaɗo.',
-      examples: 'Wanooji:',
-      example1: 'Mi heɓii tuttungol mo woppi e yejji heccere',
-      example2: 'Mi heɓi hoore yejjitaare e ɓeynugol sahaa ɗiɗi',
-      example3: 'Yejji ceertuɗo e layɗo am so mi yettii'
-    },
-    kr: {
-      inputLabel: 'Gana Shǝddǝ Wuye Ngamnaro',
-      inputPlaceholder: 'Misali: Wuye kashikro kǝnǝ kashiri 3, kurowa, ye wuye kelǝ...',
-      analyzeButton: 'Tǝla Shǝddǝ Wuye',
-      analyzing: 'Tǝla Kǝlǝ...',
-      disclaimer: 'Ani fal AI law ye kambe ngam shawar likita ngam.',
-      examples: 'Misalai:',
-      example1: 'Wuye toshi kǝlǝ ye kashikro wuye',
-      example2: 'Kashikro tawar ye kǝra kursi 2',
-      example3: 'Wuye kashikro kambe ngalaro layiwa'
-    },
-    ibb: {
-      inputLabel: 'Sọñọ Mkpọ Ukut Fo',
-      inputPlaceholder: 'Ntinya: Ndinam mkpọ ukọ nkpọ ke usọñ 3, ukut emi asịsọñ, ye mkpọ ufọk...',
-      analyzeButton: 'Tọp Mkpọ Ukut',
-      analyzing: 'Emi Ntọp...',
-      disclaimer: 'Nka ete ukpeme AI ke ikpa ikwọrọ ndisịọñọ unwana dọkita nte ntinya.',
-      examples: 'Ntinya:',
-      example1: 'Ndinam ntufọk emi akpa ikpa ye mkpọ obot',
-      example2: 'Ukọ yem emi ndiwụt ye nkpọ ikọt ke awa iba',
-      example3: 'Mkpọ nkpọ ke ayara yem ke ndiyet'
-    },
-    tiv: {
-      inputLabel: 'Kôô U Kwaghyan Nahan Or',
-      inputPlaceholder: 'Nahan: M ga u ter i ken sha hembe ahar atar, ikumen, nan u ter i gwaghwa...',
-      analyzeButton: 'Inkiahar U Kwaghyan',
-      analyzing: 'Ga Inkiahar...',
-      disclaimer: 'Iyo ve u kwaghyan AI ka i kpa mzough u ter sha i dooshima ka.',
-      examples: 'Nahan:',
-      example1: 'M ga u tuen nan u ter i gbaange',
-      example2: 'Ken yem ga ikyume nan ikumen sha utar iwa',
-      example3: 'U ter ken i uveren yem ka m ne ga iorkyaa'
-    },
-    ijc: {
-      inputLabel: 'Sọ Tẹin Sẹbiri Bụọ',
-      inputPlaceholder: 'Ọmụma: Mị kiri tẹin ụrụ bara ụbọ 3, ọwọrọ gbanị, kẹ tẹin kpọn...',
-      analyzeButton: 'Tọrụ Tẹin Sẹbiri',
-      analyzing: 'Tọrụ Kẹ...',
-      disclaimer: 'Beni tuwo AI bi kẹ iyẹ gbara ikemị sọyọ dọkita ọkọrọ.',
-      examples: 'Ọmụma:',
-      example1: 'Mị kiri kọfị tari kẹ tẹin ọkaka',
-      example2: 'Ụrụ yem tẹin kẹ ẹkpụ bara awa iba',
-      example3: 'Tẹin bara bẹlẹ yem sọ mị yebọ'
-    },
-    bin: {
-      inputLabel: 'Kpọlọ Uhan Ọkpa Ọ',
-      inputPlaceholder: 'Ikhuan: Mẹ rrẹn ukpọn ukpọ guẹguẹ ukpọn ẹvbọ ẹrha, ọwọrọ, ye ukpọn ẹhọn...',
-      analyzeButton: 'Mẹ Uhan Ọkpa',
-      analyzing: 'Ọ Mẹ...',
-      disclaimer: 'Beni imẹ AI vbe ọ khian gbee ọ tie sọyọ ọkaemwẹn.',
-      examples: 'Ikhuan:',
-      example1: 'Mẹ rrẹn uku guẹguẹ ye ukpọn okhuo',
-      example2: 'Ukpọn yem ọ koko ye ẹkpụ vbe ọwọ iba',
-      example3: 'Ukpọn bara bẹlẹ yem sọ mẹ yẹ'
+const DETECT_DEBOUNCE_MS = 500;
+const TOAST_DURATION_MS = 2800;
+
+export function DiagnosticInterface({
+  language: langProp = "en",
+  onDiagnosticComplete,
+}: Props) {
+  const [symptoms, setSymptoms] = useState("");
+  const [language, setLanguage] = useState(langProp);
+  const [detectedLabel, setDetectedLabel] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const charCount = symptoms.length;
+
+  const detectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Keep local language in sync when parent language prop changes
+  // (e.g. user switches language from the header selector)
+  const prevLangProp = useRef(langProp);
+  if (langProp !== prevLangProp.current) {
+    prevLangProp.current = langProp;
+    setLanguage(langProp);
+  }
+
+  // Translations for the current language
+  const t = useTranslations(language);
+
+  // Example prompts for current language (fall back to English)
+  const examples = EXAMPLE_PROMPTS[language] ?? EXAMPLE_PROMPTS.en;
+
+  // ── Language detection ──────────────────────────────────────────────────
+  const runDetection = useCallback((text: string) => {
+    if (detectTimer.current) clearTimeout(detectTimer.current);
+    detectTimer.current = setTimeout(() => {
+      const result = detectLanguage(text);
+      if (!result) return;
+      setLanguage((current) => {
+        if (result.code === current) return current;
+        setDetectedLabel(result.label);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(
+          () => setDetectedLabel(null),
+          TOAST_DURATION_MS,
+        );
+        return result.code;
+      });
+    }, DETECT_DEBOUNCE_MS);
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setSymptoms(value);
+    if (error) setError("");
+    runDetection(value);
+  };
+
+  const handleLanguageChange = (code: string) => {
+    setLanguage(code);
+    if (detectTimer.current) clearTimeout(detectTimer.current);
+    setDetectedLabel(null);
+  };
+
+  // ── Submit ──────────────────────────────────────────────────────────────
+  const handleSubmit = async () => {
+    const trimmed = symptoms.trim();
+    if (!trimmed) {
+      setError(t.diagErrEmpty);
+      return;
+    }
+    if (trimmed.length < 10) {
+      setError(t.diagErrShort);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const result = await analyzeSymptoms(trimmed, language);
+      onDiagnosticComplete(result);
+    } catch {
+      setError(t.diagErrFailed);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const t = translations[language] || translations.en;
+  const isRTL = language === "ar";
 
-  const handleAnalyze = async () => {
-    if (!symptoms.trim()) return;
-    setIsAnalyzing(true);
-
-    let diagnosticResult: DiagnosticResult;
-    try {
-  diagnosticResult = await analyzeSymptomsViaApi(symptoms, language);
-  if (!diagnosticResult.diagnoses.length) {
-    diagnosticResult = analyzeSymptoms(symptoms, language); // frontend fallback
-  }
-} catch {
-  diagnosticResult = analyzeSymptoms(symptoms, language); // frontend fallback
-}
-
-    onDiagnosticComplete(diagnosticResult);
-    setIsAnalyzing(false);
-  };
-
-  const handleExampleClick = (example: string) => {
-    setSymptoms(example);
-  };
-
+  // ── Render ──────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
-      <div className="rounded-3xl border border-[#b9defb] bg-white p-5 shadow-sm">
-        <h2 className="text-5xl font-bold leading-tight text-[#1089e4]">AI Symptom Checker</h2>
-        <p className="mt-2 text-2xl leading-tight text-slate-700">
-          Get a preliminary assessment of your symptoms and potential conditions to discuss with your healthcare provider.
+    <div
+      style={{
+        maxWidth: 720,
+        margin: "0 auto",
+        direction: isRTL ? "rtl" : "ltr",
+      }}
+    >
+      {/* Header */}
+      <div style={{ marginBottom: 32 }}>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 14,
+            padding: "5px 14px",
+            background: "linear-gradient(90deg, #ccfbf1, #d1fae5)",
+            border: "1px solid #5eead4",
+            borderRadius: 100,
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: "var(--teal)",
+              display: "block",
+            }}
+          />
+          <span
+            style={{
+              fontSize: 12,
+              color: "var(--teal)",
+              fontFamily: "var(--font-mono)",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            {t.diagSessionBadge}
+          </span>
+        </div>
+
+        <h1
+          style={{
+            fontFamily: "var(--font-display)",
+            fontSize: "clamp(26px, 4vw, 40px)",
+            fontWeight: 600,
+            lineHeight: 1.2,
+            color: "var(--navy)",
+            marginBottom: 10,
+          }}
+        >
+          {t.diagHeadline}{" "}
+          <em style={{ fontStyle: "italic", color: "var(--teal)" }}>
+            {t.diagHeadlineEm}
+          </em>
+        </h1>
+        <p
+          style={{
+            color: "var(--ink-soft)",
+            fontSize: 15,
+            lineHeight: 1.65,
+            maxWidth: 520,
+          }}
+        >
+          {t.diagSubtext}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.05fr_1.45fr]">
-        <div className="rounded-3xl border border-[#9dcff8] bg-white p-5 shadow-sm">
-          <div className="mb-5">
-            <h3 className="text-lg font-semibold text-slate-900">Patient Profile</h3>
-            <p className="text-sm text-slate-600">Captured for session records and export.</p>
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-              <div>
-                <label className="text-sm font-semibold text-slate-700">Age Range</label>
-                <select
-                  value={patientProfile.ageRange}
-                  onChange={(event) =>
-                    onPatientProfileChange({
-                      ...patientProfile,
-                      ageRange: event.target.value as AgeRangeOption
-                    })
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:ring-2 focus:ring-[#118be7] focus:border-transparent"
-                >
-                  <option value="0-12">0-12</option>
-                  <option value="13-17">13-17</option>
-                  <option value="18-35">18-35</option>
-                  <option value="36-55">36-55</option>
-                  <option value="56+">56+</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-semibold text-slate-700">Gender (Optional)</label>
-                <select
-                  value={patientProfile.gender}
-                  onChange={(event) =>
-                    onPatientProfileChange({
-                      ...patientProfile,
-                      gender: event.target.value as GenderOption
-                    })
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:ring-2 focus:ring-[#118be7] focus:border-transparent"
-                >
-                  <option value="">Not provided</option>
-                  <option value="female">Female</option>
-                  <option value="male">Male</option>
-                  <option value="non_binary">Non-binary</option>
-                  <option value="prefer_not_to_say">Prefer not to say</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-semibold text-slate-700">Language</label>
-                <div className="mt-1 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
-                  {language.toUpperCase()}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <label className="mb-3 block text-xl font-semibold text-slate-900">
-            {t.inputLabel}
-          </label>
-          <textarea
-            value={symptoms}
-            onChange={(e) => setSymptoms(e.target.value)}
-            placeholder={t.inputPlaceholder}
-            rows={7}
-            className="w-full resize-none rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3 text-base text-slate-800 focus:ring-2 focus:ring-[#118be7] focus:border-transparent"
-          />
-
-          <div className="mt-4">
-            <p className="mb-2 text-sm font-medium text-slate-700">{t.examples}</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => handleExampleClick(t.example1)}
-                className="rounded-full border border-[#b9defb] bg-[#e8f5ff] px-3 py-1.5 text-sm text-[#0f5d9d]"
-              >
-                {t.example1}
-              </button>
-              <button
-                onClick={() => handleExampleClick(t.example2)}
-                className="rounded-full border border-[#b9defb] bg-[#e8f5ff] px-3 py-1.5 text-sm text-[#0f5d9d]"
-              >
-                {t.example2}
-              </button>
-              <button
-                onClick={() => handleExampleClick(t.example3)}
-                className="rounded-full border border-[#b9defb] bg-[#e8f5ff] px-3 py-1.5 text-sm text-[#0f5d9d]"
-              >
-                {t.example3}
-              </button>
-            </div>
-          </div>
-
-          <button
-            onClick={handleAnalyze}
-            disabled={!symptoms.trim() || isAnalyzing}
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#118be7] px-6 py-3 text-lg font-semibold text-white shadow-md transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+      {/* Input card */}
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-xl)",
+          overflow: "hidden",
+          boxShadow: "var(--shadow-sm)",
+        }}
+      >
+        {/* Toolbar */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 16px",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--surface-2)",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              color: "var(--ink-muted)",
+              fontFamily: "var(--font-mono)",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
           >
-            {isAnalyzing ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                {t.analyzing}
-              </>
-            ) : (
-              <>
-                <Send className="h-5 w-5" />
-                {t.analyzeButton}
-              </>
+            {t.diagTextareaLabel}
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {detectedLabel && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "4px 10px",
+                  background: "#ccfbf1",
+                  border: "1px solid #5eead4",
+                  borderRadius: 100,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span style={{ fontSize: 13 }}>🌐</span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontFamily: "var(--font-mono)",
+                    color: "var(--teal)",
+                  }}
+                >
+                  {t.diagAutoDetected} <strong>{detectedLabel}</strong>
+                </span>
+              </div>
             )}
-          </button>
-
-          <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
-            <p className="text-sm text-amber-800">{t.disclaimer}</p>
+            <LanguageSelector
+              language={language}
+              onLanguageChange={handleLanguageChange}
+            />
           </div>
         </div>
 
-        <div className="rounded-3xl border border-[#9dcff8] bg-[#edf6ff] p-8 shadow-sm">
-          <div className="flex h-full min-h-[560px] flex-col items-center justify-center text-center">
-            <div className="text-7xl text-[#6f91af]">✧</div>
-            <h3 className="mt-5 text-4xl font-semibold text-slate-700">Your generated content will appear here</h3>
-            <p className="mt-2 text-lg text-slate-600">Fill in the inputs and click Analyze Symptoms</p>
-          </div>
+        {/* Textarea */}
+        <textarea
+          value={symptoms}
+          onChange={handleChange}
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") handleSubmit();
+          }}
+          placeholder={examples[0]}
+          rows={7}
+          maxLength={2000}
+          style={{
+            width: "100%",
+            padding: "20px",
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            resize: "vertical",
+            color: "var(--ink)",
+            fontFamily: "var(--font-body)",
+            fontSize: 15,
+            lineHeight: 1.7,
+            direction: isRTL ? "rtl" : "ltr",
+          }}
+        />
+
+        {/* Footer bar */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "10px 16px",
+            borderTop: "1px solid var(--border)",
+            background: "var(--surface-2)",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 12,
+              fontFamily: "var(--font-mono)",
+              color: charCount > 1800 ? "var(--amber)" : "var(--ink-muted)",
+            }}
+          >
+            {charCount} {t.diagCharLimit}
+          </span>
+          <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>
+            {t.diagShortcut}
+          </span>
         </div>
       </div>
+
+      {/* Error */}
+      {error && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "12px 16px",
+            background: "#fef2f2",
+            border: "1px solid #fca5a5",
+            borderRadius: "var(--radius)",
+            color: "#dc2626",
+            fontSize: 14,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          ⚠ {error}
+        </div>
+      )}
+
+      {/* Example prompts */}
+      <div style={{ marginTop: 24 }}>
+        <p
+          style={{
+            fontSize: 11,
+            color: "var(--ink-muted)",
+            marginBottom: 10,
+            fontFamily: "var(--font-mono)",
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+          }}
+        >
+          {t.diagExamplesLabel}
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {examples.map((prompt, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                setSymptoms(prompt);
+                setError("");
+                runDetection(prompt);
+              }}
+              style={{
+                textAlign: isRTL ? "right" : "left",
+                padding: "10px 14px",
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                color: "var(--ink-soft)",
+                cursor: "pointer",
+                fontSize: 13,
+                lineHeight: 1.5,
+                fontFamily: "var(--font-body)",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background =
+                  "var(--surface-2)";
+                (e.currentTarget as HTMLElement).style.borderColor =
+                  "var(--border-2)";
+                (e.currentTarget as HTMLElement).style.color = "var(--ink)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background =
+                  "var(--surface)";
+                (e.currentTarget as HTMLElement).style.borderColor =
+                  "var(--border)";
+                (e.currentTarget as HTMLElement).style.color =
+                  "var(--ink-soft)";
+              }}
+            >
+              <span
+                style={{
+                  color: "var(--ink-muted)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                }}
+              >
+                #{String(i + 1).padStart(2, "0")}{" "}
+              </span>
+              {prompt}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Submit */}
+      <div
+        style={{
+          marginTop: 28,
+          display: "flex",
+          justifyContent: isRTL ? "flex-start" : "flex-end",
+        }}
+      >
+        <button
+          onClick={handleSubmit}
+          disabled={loading || !symptoms.trim()}
+          className={!loading && symptoms.trim() ? "btn-cta" : ""}
+          style={
+            loading || !symptoms.trim()
+              ? {
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "13px 28px",
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius)",
+                  color: "var(--ink-muted)",
+                  fontFamily: "var(--font-body)",
+                  fontSize: 15,
+                  fontWeight: 600,
+                  cursor: "not-allowed",
+                }
+              : {
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "13px 28px",
+                }
+          }
+        >
+          {loading ? (
+            <>
+              <span
+                style={{
+                  width: 16,
+                  height: 16,
+                  border: "2px solid var(--border-2)",
+                  borderTopColor: "var(--teal)",
+                  borderRadius: "50%",
+                  animation: "spin 0.7s linear infinite",
+                  display: "block",
+                }}
+              />
+              {t.diagAnalyzing}
+            </>
+          ) : (
+            t.diagRunBtn
+          )}
+        </button>
+      </div>
+
+      <p
+        style={{
+          marginTop: 20,
+          fontSize: 12,
+          color: "var(--ink-muted)",
+          lineHeight: 1.6,
+        }}
+      >
+        <strong style={{ color: "var(--amber)", fontWeight: 600 }}>
+          {t.diagNotMedical}
+        </strong>{" "}
+        {t.diagNotMedicalBody}
+      </p>
     </div>
   );
 }
+
+export default DiagnosticInterface;

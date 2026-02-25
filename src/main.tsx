@@ -5,8 +5,8 @@ import { AuthProvider } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AuthPage } from "./pages/AuthPage";
 import { ResetPasswordPage } from "./pages/ResetPassword";
-import "./styles/globals.css"; // ← design tokens, resets, animations
-import "./styles/index.css"; // ← component classes
+import "./styles/globals.css";
+import "./styles/index.css";
 import App from "./App";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
