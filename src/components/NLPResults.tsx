@@ -258,34 +258,34 @@ export function NLPResults({ result, language }: NLPResultsProps) {
   return (
     <div className="space-y-6">
       {/* NLP Entity Detection */}
-      <div className="rounded-2xl border border-[#b9defb] bg-white p-6 shadow-sm">
+      <div className="card">
         <div className="flex items-center gap-3 mb-4">
-          <div className="bg-[#e8f5ff] p-2 rounded-lg">
-            <Brain className="w-6 h-6 text-[#118be7]" />
+          <div className="bg-[var(--surface-3)] p-2 rounded-lg">
+            <Brain className="w-6 h-6 text-[var(--teal)]" />
           </div>
-          <h2 className="text-xl font-semibold text-gray-900">{t.nlpAnalysis}</h2>
+          <h2 className="text-xl font-semibold text-[var(--navy)]" style={{ fontFamily: 'var(--font-display)' }}>{t.nlpAnalysis}</h2>
         </div>
 
         <div className="space-y-3">
-          <h3 className="font-medium text-gray-700">{t.entitiesDetected}:</h3>
+          <h3 className="section-label mb-2">{t.entitiesDetected}:</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {result.entities.map((entity, index) => (
               <div
                 key={index}
-                className="flex items-center justify-between rounded-lg border border-[#b9defb] bg-[#edf6ff] p-3"
+                className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3"
               >
-                <div className="flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-[#118be7]" />
-                  <div>
-                    <span className="font-medium text-gray-900">{entity.text}</span>
-                    <p className="text-xs text-gray-600">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                  <Activity className="w-4 h-4 text-[var(--teal)] mt-1 sm:mt-0 flex-shrink-0" />
+                  <div className="flex flex-col">
+                    <span className="font-medium text-[var(--ink)] break-words">{entity.text}</span>
+                    <p className="text-xs text-[var(--ink-muted)] mt-0.5">
                       {entityTypeTranslations[entity.type]}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-[#118be7]" />
-                  <span className="text-sm font-medium text-[#118be7]">
+                  <TrendingUp className="w-4 h-4 text-[var(--teal)]" />
+                  <span className="text-sm font-medium text-[var(--teal)]">
                     {Math.round(entity.confidence * 100)}%
                   </span>
                 </div>
@@ -296,14 +296,14 @@ export function NLPResults({ result, language }: NLPResultsProps) {
       </div>
 
       {/* Diagnostic Results */}
-      <div className="rounded-2xl border border-[#b9defb] bg-white p-6 shadow-sm">
+      <div className="card">
         <div className="flex items-center gap-3 mb-4">
-          <div className="bg-[#e8f5ff] p-2 rounded-lg">
-            <Activity className="w-6 h-6 text-[#118be7]" />
+          <div className="bg-[var(--surface-3)] p-2 rounded-lg">
+            <Activity className="w-6 h-6 text-[var(--teal)]" />
           </div>
-          <h2 className="text-xl font-semibold text-gray-900">{t.diagnosticResults}</h2>
+          <h2 className="text-xl font-semibold text-[var(--navy)]" style={{ fontFamily: 'var(--font-display)' }}>{t.diagnosticResults}</h2>
         </div>
-        <p className="text-sm text-gray-600 mb-4">
+        <p className="text-sm text-[var(--ink-muted)] mb-4">
           Confidence is estimated from symptom/entity match density, duration and severity cues, and model certainty signals.
         </p>
 
@@ -311,17 +311,17 @@ export function NLPResults({ result, language }: NLPResultsProps) {
           {result.diagnoses.map((diagnosis, index) => (
             <div
               key={index}
-              className="rounded-xl border border-[#c4e4ff] bg-[#fbfdff] p-5 transition-shadow hover:shadow-sm"
+              className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-5 transition-shadow hover:shadow-sm"
             >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-1">
+              <div className="flex flex-col sm:flex-row items-start justify-between mb-4 gap-3">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg font-semibold text-[var(--navy)] mb-1.5 break-words">
                     {diagnosis.condition}
                   </h3>
-                  <p className="text-gray-600">{diagnosis.description}</p>
+                  <p className="text-[var(--ink-soft)] text-sm leading-relaxed">{diagnosis.description}</p>
                 </div>
-                <div className="ml-4">
-                  <div className={`px-3 py-1.5 rounded-lg font-medium text-sm ${getConfidenceColor(diagnosis.confidence)}`}>
+                <div className="flex-shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
+                  <div className={`inline-block px-3 py-1.5 rounded-lg font-medium text-sm ${getConfidenceColor(diagnosis.confidence)}`}>
                     {getConfidenceLabel(diagnosis.confidence)} {Math.round(diagnosis.confidence * 100)}%
                   </div>
                 </div>
@@ -329,28 +329,31 @@ export function NLPResults({ result, language }: NLPResultsProps) {
 
               {/* Confidence Bar */}
               <div className="mb-4">
-                <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                <div className="flex items-center justify-between text-xs text-[var(--ink-muted)] mb-1">
                   <span>{t.confidence}</span>
                   <span>{Math.round(diagnosis.confidence * 100)}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-[var(--border)] rounded-full h-2">
                   <div
-                    className="h-2 rounded-full bg-gradient-to-r from-[#118be7] to-[#47b1ff] transition-all"
-                    style={{ width: `${diagnosis.confidence * 100}%` }}
+                    className="h-2 rounded-full transition-all"
+                    style={{ 
+                      width: `${diagnosis.confidence * 100}%`,
+                      background: 'linear-gradient(90deg, var(--teal) 0%, var(--teal-mid) 100%)'
+                    }}
                   />
                 </div>
               </div>
 
               {/* Recommendations */}
               <div>
-                <h4 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
+                <h4 className="font-medium text-[var(--ink)] mb-2 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[var(--green)]" />
                   {t.recommendations}:
                 </h4>
                 <ul className="space-y-2">
                   {diagnosis.recommendations.map((rec, recIndex) => (
-                    <li key={recIndex} className="flex items-start gap-2 text-sm text-gray-700">
-                      <span className="mt-0.5 text-[#118be7]">•</span>
+                    <li key={recIndex} className="flex items-start gap-2 text-sm text-[var(--ink-soft)]">
+                      <span className="mt-0.5 text-[var(--teal)]">•</span>
                       <span>{rec}</span>
                     </li>
                   ))}
@@ -361,26 +364,28 @@ export function NLPResults({ result, language }: NLPResultsProps) {
         </div>
 
         {/* Warning */}
-        <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
-          <p className="text-sm text-amber-900">
-            {language === 'en' && 'These results are generated by an AI system. Please consult a healthcare professional for proper diagnosis and treatment.'}
-            {language === 'es' && 'Estos resultados son generados por un sistema de IA. Consulte a un profesional de la salud para un diagnóstico y tratamiento adecuados.'}
-            {language === 'fr' && 'Ces résultats sont générés par un système d\'IA. Veuillez consulter un professionnel de la santé pour un diagnostic et un traitement appropriés.'}
-            {language === 'de' && 'Diese Ergebnisse werden von einem KI-System generiert. Bitte konsultieren Sie einen Arzt für eine ordnungsgemäße Diagnose und Behandlung.'}
-            {language === 'zh' && '这些结果由AI系统生成。请咨询医疗专业人员以获得正确的诊断和治疗。'}
-            {language === 'ar' && 'هذه النتائج مولدة بواسطة نظام ذكاء اصطناعي. يرجى استشارة أخصائي رعاية صحية للحصول على التشخيص والعلاج المناسبين.'}
-            {language === 'ha' && 'Waɗannan sakamakon tsarin AI ne. Don Allah ku tuntubi ƙwararren likita don samun ingantaccen bincike da magani.'}
-            {language === 'yo' && 'Awọn abajade wọnyi jẹ ẹya ti eto AI. Jọwọ kan si oṣiṣẹ ilera alamọdaju fun iwadii ati itọju to peye.'}
-            {language === 'ig' && 'Nsonaazụ ndị a bụ nke sistemụ AI mepụtara. Biko kpọtụrụ ọkachamara ahụike maka nyocha na ọgwụgwọ ziri ezi.'}
-            {language === 'pcm' && 'Na AI system generate these results. Abeg go see proper doctor for correct check-up and treatment.'}
-            {language === 'ff' && 'Ɗee keeɓe ko yuɓɓo AI waɗi ɗum. Tiiɗno jokkondiru jiyaaɗo ngam patnugol e caggal ɗuuɗal.'}
-            {language === 'kr' && 'Ani shǝddǝ fal AI kǝlǝ. Shawar likita ngam tǝla ye lawul ngamtoro.'}
-            {language === 'ibb' && 'Unwana ami AI emi akpa. Dọñọ dọkita nte ndinam unwana ye mmọ nte ntinya.'}
-            {language === 'tiv' && 'U kwaghyan ve AI u kpa. Doo u dooshima sha u kwaghyan nan u ter nahan.'}
-            {language === 'ijc' && 'Sẹbiri beni AI tari kọmị. Yẹ dọkita ọkọrọ tọrụ kẹ sọyọ ọkọrọ.'}
-            {language === 'bin' && 'Imẹ ye AI ọ kpa. Yọọ ọkaemwẹn vbe unwana ye imẹ nte ntinya.'}
-          </p>
+        <div className="mt-6 disclaimer">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-[var(--amber)]" />
+            <p>
+              {language === 'en' && 'These results are generated by an AI system. Please consult a healthcare professional for proper diagnosis and treatment.'}
+              {language === 'es' && 'Estos resultados son generados por un sistema de IA. Consulte a un profesional de la salud para un diagnóstico y tratamiento adecuados.'}
+              {language === 'fr' && 'Ces résultats sont générés par un système d\'IA. Veuillez consulter un professionnel de la santé pour un diagnostic et un traitement appropriés.'}
+              {language === 'de' && 'Diese Ergebnisse werden von einem KI-System generiert. Bitte konsultieren Sie einen Arzt für eine ordnungsgemäße Diagnose und Behandlung.'}
+              {language === 'zh' && '这些结果由AI系统生成。请咨询医疗专业人员以获得正确的诊断和治疗。'}
+              {language === 'ar' && 'هذه النتائج مولدة بواسطة نظام ذكاء اصطناعي. يرجى استشارة أخصائي رعاية صحية للحصول على التشخيص والعلاج المناسبين.'}
+              {language === 'ha' && 'Waɗannan sakamakon tsarin AI ne. Don Allah ku tuntubi ƙwararren likita don samun ingantaccen bincike da magani.'}
+              {language === 'yo' && 'Awọn abajade wọnyi jẹ ẹya ti eto AI. Jọwọ kan si oṣiṣẹ ilera alamọdaju fun iwadii ati itọju to peye.'}
+              {language === 'ig' && 'Nsonaazụ ndị a bụ nke sistemụ AI mepụtara. Biko kpọtụrụ ọkachamara ahụike maka nyocha na ọgwụgwọ ziri ezi.'}
+              {language === 'pcm' && 'Na AI system generate these results. Abeg go see proper doctor for correct check-up and treatment.'}
+              {language === 'ff' && 'Ɗee keeɓe ko yuɓɓo AI waɗi ɗum. Tiiɗno jokkondiru jiyaaɗo ngam patnugol e caggal ɗuuɗal.'}
+              {language === 'kr' && 'Ani shǝddǝ fal AI kǝlǝ. Shawar likita ngam tǝla ye lawul ngamtoro.'}
+              {language === 'ibb' && 'Unwana ami AI emi akpa. Dọñọ dọkita nte ndinam unwana ye mmọ nte ntinya.'}
+              {language === 'tiv' && 'U kwaghyan ve AI u kpa. Doo u dooshima sha u kwaghyan nan u ter nahan.'}
+              {language === 'ijc' && 'Sẹbiri beni AI tari kọmị. Yẹ dọkita ọkọrọ tọrụ kẹ sọyọ ọkọrọ.'}
+              {language === 'bin' && 'Imẹ ye AI ọ kpa. Yọọ ọkaemwẹn vbe unwana ye imẹ nte ntinya.'}
+            </p>
+          </div>
         </div>
       </div>
     </div>
