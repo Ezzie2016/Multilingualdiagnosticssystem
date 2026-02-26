@@ -48,15 +48,13 @@ export function LanguageSelector({
     setOpen(true);
   };
 
-  // Close on outside click or scroll
+  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(false);
     document.addEventListener("mousedown", close);
-    window.addEventListener("scroll", close, true);
     return () => {
       document.removeEventListener("mousedown", close);
-      window.removeEventListener("scroll", close, true);
     };
   }, [open]);
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DiagnosticInterface } from "./components/DiagnosticInterface";
 import { LanguageSelector } from "./components/LanguageSelector";
 import { DiagnosticHistory } from "./components/DiagnosticHistory";
@@ -80,9 +80,57 @@ export interface DiagnosticResult {
 
 type View = "landing" | "diagnostic" | "results" | "history";
 
+const LANGUAGE_OPTIONS: Array<{ code: Language; label: string }> = [
+  { code: "en", label: "English" },
+  { code: "es", label: "Spanish" },
+  { code: "fr", label: "French" },
+  { code: "de", label: "German" },
+  { code: "zh", label: "Chinese" },
+  { code: "ar", label: "Arabic" },
+  { code: "ha", label: "Hausa" },
+  { code: "yo", label: "Yoruba" },
+  { code: "ig", label: "Igbo" },
+  { code: "pcm", label: "Pidgin" },
+  { code: "ff", label: "Fula" },
+  { code: "kr", label: "Kanuri" },
+  { code: "ibb", label: "Ibibio" },
+  { code: "tiv", label: "Tiv" },
+  { code: "ijc", label: "Ijo" },
+  { code: "bin", label: "Edo" },
+];
+
+const SUPPORTED_LANGUAGE_CODES = new Set<Language>(
+  LANGUAGE_OPTIONS.map((option) => option.code),
+);
+
+function normalizeLanguage(code: string): Language {
+  const normalized = code.trim().toLowerCase() as Language;
+  return SUPPORTED_LANGUAGE_CODES.has(normalized) ? normalized : "en";
+}
+
+function promptForLanguage(defaultLanguage: Language): Language {
+  const inputToCode = new Map<string, Language>();
+  for (const option of LANGUAGE_OPTIONS) {
+    inputToCode.set(option.code, option.code);
+    inputToCode.set(option.label.toLowerCase(), option.code);
+  }
+  inputToCode.set("francais", "fr");
+  inputToCode.set("français", "fr");
+
+  const choice = window.prompt(
+    `Choose language (${LANGUAGE_OPTIONS.map((option) => `${option.code}=${option.label}`).join(", ")}):`,
+    defaultLanguage,
+  );
+  if (choice === null) return defaultLanguage;
+
+  const picked = inputToCode.get(choice.trim().toLowerCase());
+  return picked ?? defaultLanguage;
+}
+
 /* ─── Component ──────────────────────────────────────────────────────── */
 function App() {
   const [language, setLanguage] = useState<Language>("en");
+  const [languageReady, setLanguageReady] = useState(false);
   const [history, setHistory] = useState<DiagnosticResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [view, setView] = useState<View>("landing");
@@ -94,6 +142,7 @@ function App() {
     gender: "",
     language: "en",
   });
+  const promptHandledRef = useRef(false);
 
   // All UI strings for the current language
   const t = useTranslations(language);
@@ -102,6 +151,31 @@ function App() {
   useEffect(() => {
     document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
   }, [language]);
+
+  useEffect(() => {
+    if (promptHandledRef.current) return;
+    promptHandledRef.current = true;
+
+    let defaultLanguage: Language = "en";
+    try {
+      const stored = localStorage.getItem("mds_ui_language");
+      if (stored) defaultLanguage = normalizeLanguage(stored);
+    } catch {}
+
+    const selectedLanguage = promptForLanguage(defaultLanguage);
+    setLanguage(selectedLanguage);
+    try {
+      localStorage.setItem("mds_ui_language", selectedLanguage);
+    } catch {}
+    setLanguageReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!languageReady) return;
+    try {
+      localStorage.setItem("mds_ui_language", language);
+    } catch {}
+  }, [language, languageReady]);
 
   useEffect(() => {
     setHistoryLoading(true);
@@ -120,6 +194,10 @@ function App() {
   useEffect(() => {
     setPatientProfile((prev) => ({ ...prev, language }));
   }, [language]);
+
+  const handleLanguageChange = (code: string) => {
+    setLanguage(normalizeLanguage(code));
+  };
 
   const handleDiagnosticComplete = (result: DiagnosticResult) => {
     const enriched: DiagnosticResult = {
@@ -214,6 +292,8 @@ function App() {
     },
   ];
 
+  if (!languageReady) return null;
+
   return (
     <div className="app-shell">
       {/* ── HEADER ─────────────────────────────────────────────────────── */}
@@ -247,7 +327,7 @@ function App() {
           <div className="header-controls">
             <LanguageSelector
               language={language}
-              onLanguageChange={setLanguage}
+              onLanguageChange={handleLanguageChange}
             />
             <UserMenu />
           </div>
@@ -358,6 +438,7 @@ function App() {
           <div className="anim-up">
             <DiagnosticInterface
               language={language}
+              onLanguageChange={handleLanguageChange}
               patientProfile={patientProfile}
               onPatientProfileChange={setPatientProfile}
               onDiagnosticComplete={handleDiagnosticComplete}

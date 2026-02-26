@@ -19,6 +19,7 @@ NLP_PROVIDER=ollama
 OLLAMA_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=llama3.1:8b
 API_PORT=4002
+FHIR_TERMINOLOGY_BASE_URL=
 ```
 
 Optional cloud mode:
@@ -73,8 +74,50 @@ Expected shape:
 {
   "status": "ok",
   "mode": "ollama",
-  "model": "llama3.1:8b"
+  "model": "llama3.1:8b",
+  "medicalBank": {
+    "symptomEntries": 18,
+    "conditionEntries": 17,
+    "weightedLinks": 66
+  }
 }
+```
+
+## 5.1) Medical Knowledge Search API
+
+The backend now exposes a medical knowledge search endpoint:
+
+```text
+GET /api/medical/search?q=chest pain&language=en
+```
+
+Example:
+```text
+http://127.0.0.1:4002/api/medical/search?q=fever&language=en
+```
+
+## 5.2) Sync External FHIR Terminology
+
+You can import additional symptom/condition concepts into the runtime medical bank:
+
+```text
+POST /api/medical/sync-terminology
+```
+
+Body example:
+```json
+{
+  "fhirBaseUrl": "https://tx.fhir.org/r4",
+  "symptomValueSetUrl": "http://example.org/fhir/ValueSet/symptom-concepts",
+  "conditionValueSetUrl": "http://example.org/fhir/ValueSet/condition-concepts",
+  "language": "en",
+  "count": 200
+}
+```
+
+Check loaded external data:
+```text
+http://127.0.0.1:4002/api/medical/status
 ```
 
 ## 6) Use the App

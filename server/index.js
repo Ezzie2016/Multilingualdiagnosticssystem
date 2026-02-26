@@ -1,4 +1,14 @@
 const http = require("node:http");
+const { URL } = require("node:url");
+const {
+  analyzeWithMedicalBank,
+  getKnowledgeContextForPrompt,
+  searchMedicalBank,
+  upsertExternalMedicalData,
+  getExternalMedicalDataStatus,
+  getMedicalBankStats,
+} = require("./medical/engine");
+const { syncTerminologyFromFhir } = require("./medical/terminologyClient");
 
 const PORT = Number(process.env.API_PORT || 3001);
 const NLP_PROVIDER = process.env.NLP_PROVIDER || "ollama";
@@ -6,6 +16,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b";
+const FHIR_TERMINOLOGY_BASE_URL = process.env.FHIR_TERMINOLOGY_BASE_URL || "";
 
 // ─── Condition catalog (rule-based fallback) ──────────────────────────────────
 
@@ -292,62 +303,7 @@ const languageKeywordMap = {
 // ─── Rule-based fallback ──────────────────────────────────────────────────────
 
 function buildRuleBasedResponse(symptoms, language) {
-  const normalized = String(symptoms || "").toLowerCase();
-  const keywords = languageKeywordMap[language] || languageKeywordMap.en;
-  const entities = [];
-  const conditionScores = {};
-
-  Object.entries(keywords).forEach(([conditionKey, keyword]) => {
-    if (normalized.includes(keyword.toLowerCase())) {
-      entities.push({ text: keyword, type: "symptom", confidence: 0.9 });
-      conditionScores[conditionKey] = (conditionScores[conditionKey] || 0) + 1;
-    }
-  });
-
-  const durationMatches =
-    normalized.match(/\d+\s*(days?|hours?|weeks?|months?|minutes?)/g) || [];
-  durationMatches.forEach((match) => {
-    entities.push({ text: match, type: "duration", confidence: 0.9 });
-  });
-
-  const diagnoses = Object.entries(conditionScores)
-    .map(([conditionKey, score]) => {
-      const info = conditionCatalog[conditionKey];
-      return {
-        condition: info?.name || conditionKey,
-        confidence: Math.min(0.95, 0.45 + score * 0.2),
-        description:
-          info?.description || "Condition requires clinical assessment.",
-        recommendations: info?.recommendations || [
-          "Consult a healthcare professional",
-        ],
-      };
-    })
-    .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, 3);
-
-  if (diagnoses.length === 0) {
-    diagnoses.push({
-      condition: "No clear match found",
-      confidence: 0.3,
-      description:
-        "The submitted symptom text did not match known patterns. Please try describing your symptoms more clearly.",
-      recommendations: [
-        "Use clear symptom terms (e.g. fever, cough, chest pain)",
-        'Include duration and severity (e.g. "3 days", "severe")',
-        "Consult a healthcare professional for proper diagnosis",
-      ],
-    });
-  }
-
-  return {
-    id: `diag-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-    timestamp: new Date().toISOString(),
-    language,
-    symptoms,
-    diagnoses,
-    entities,
-  };
+  return analyzeWithMedicalBank(symptoms, language);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -489,9 +445,22 @@ function getMedicalJsonPrompt(symptoms, language) {
   };
 
   const langName = langNames[language] || language;
+  const context = getKnowledgeContextForPrompt(symptoms, language);
+  const symptomContext =
+    context.matchedSymptoms.length > 0
+      ? context.matchedSymptoms.join(", ")
+      : "none";
+  const conditionContext =
+    context.candidateConditions.length > 0
+      ? context.candidateConditions.join(", ")
+      : "none";
 
   return `Patient symptom narrative (language: ${langName}):
 "${symptoms}"
+
+Medical knowledge bank hints:
+- Matched symptom terms: ${symptomContext}
+- Candidate conditions: ${conditionContext}
 
 Return ONLY this JSON structure with no other text:
 {
@@ -659,22 +628,79 @@ function sendJson(res, statusCode, data) {
 
 const server = http.createServer((req, res) => {
   const { method, url } = req;
+  const requestUrl = new URL(url || "/", "http://127.0.0.1");
+  const pathname = requestUrl.pathname;
 
   if (method === "OPTIONS") {
     sendJson(res, 200, { ok: true });
     return;
   }
 
-  if (method === "GET" && url === "/health") {
+  if (method === "GET" && pathname === "/health") {
     sendJson(res, 200, {
       status: "ok",
       mode: NLP_PROVIDER,
       model: NLP_PROVIDER === "ollama" ? OLLAMA_MODEL : OPENAI_MODEL,
+      terminologyBaseUrl: FHIR_TERMINOLOGY_BASE_URL || null,
+      externalMedicalData: getExternalMedicalDataStatus(),
+      medicalBank: getMedicalBankStats(),
     });
     return;
   }
 
-  if (method === "POST" && url === "/api/analyze") {
+  if (method === "GET" && pathname === "/api/medical/search") {
+    const query = requestUrl.searchParams.get("q") || "";
+    const language = requestUrl.searchParams.get("language") || "en";
+    sendJson(res, 200, searchMedicalBank(query, language));
+    return;
+  }
+
+  if (method === "GET" && pathname === "/api/medical/status") {
+    sendJson(res, 200, {
+      externalMedicalData: getExternalMedicalDataStatus(),
+      medicalBank: getMedicalBankStats(),
+    });
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/medical/sync-terminology") {
+    let body = "";
+
+    req.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 1_000_000) req.destroy();
+    });
+
+    req.on("end", async () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const payload = await syncTerminologyFromFhir({
+          fhirBaseUrl:
+            String(parsed.fhirBaseUrl || "").trim() || FHIR_TERMINOLOGY_BASE_URL,
+          symptomValueSetUrl: String(parsed.symptomValueSetUrl || "").trim(),
+          conditionValueSetUrl: String(parsed.conditionValueSetUrl || "").trim(),
+          language: String(parsed.language || "en").trim(),
+          filter: String(parsed.filter || "").trim(),
+          count: Number(parsed.count || 250),
+        });
+
+        const status = upsertExternalMedicalData(payload);
+        sendJson(res, 200, {
+          ok: true,
+          source: payload.source,
+          imported: payload.meta,
+          externalMedicalData: status,
+          medicalBank: getMedicalBankStats(),
+        });
+      } catch (error) {
+        sendJson(res, 400, { error: error.message || "Sync failed" });
+      }
+    });
+
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/analyze") {
     let body = "";
 
     req.on("data", (chunk) => {

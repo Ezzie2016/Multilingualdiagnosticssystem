@@ -57,8 +57,8 @@
     port: 3000,
     open: true,
     proxy: {
-      '/api': 'http://localhost:4002',
-      '/health': 'http://localhost:4002',
+      '/api': 'http://localhost:3001',
+      '/health': 'http://localhost:3001',
     },
   },
 });

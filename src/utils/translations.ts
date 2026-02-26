@@ -316,7 +316,7 @@ const fr: UIStrings = {
   diagCharLimit:      '/ 2000',
   diagShortcut:       '⌘ + Entrée pour soumettre',
   diagExamplesLabel:  'Exemples de récits',
-  diagRunBtn:         'Lancer l'Analyse →',
+  diagRunBtn:         "Lancer l'Analyse →",
   diagAnalyzing:      'Analyse en cours…',
   diagNotMedical:     'Pas un dispositif médical.',
   diagNotMedicalBody: "Cet outil fournit uniquement une aide informative. Consultez toujours un professionnel de santé.",

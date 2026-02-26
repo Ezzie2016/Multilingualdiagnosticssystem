@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { detectLanguage } from "../utils/detectLanguage";
 import { useTranslations } from "../utils/translations";
 import { LanguageSelector } from "./LanguageSelector";
@@ -51,6 +51,7 @@ async function analyzeSymptoms(
 
 interface Props {
   language?: string;
+  onLanguageChange?: (code: string) => void;
   patientProfile?: { ageRange: string; gender: string; language: string };
   onPatientProfileChange?: (p: {
     ageRange: string;
@@ -104,25 +105,25 @@ const TOAST_DURATION_MS = 2800;
 
 export function DiagnosticInterface({
   language: langProp = "en",
+  onLanguageChange,
   onDiagnosticComplete,
 }: Props) {
   const [symptoms, setSymptoms] = useState("");
-  const [language, setLanguage] = useState(langProp);
   const [detectedLabel, setDetectedLabel] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const charCount = symptoms.length;
+  const language = langProp;
 
   const detectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keep local language in sync when parent language prop changes
-  // (e.g. user switches language from the header selector)
-  const prevLangProp = useRef(langProp);
-  if (langProp !== prevLangProp.current) {
-    prevLangProp.current = langProp;
-    setLanguage(langProp);
-  }
+  useEffect(() => {
+    return () => {
+      if (detectTimer.current) clearTimeout(detectTimer.current);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
 
   // Translations for the current language
   const t = useTranslations(language);
@@ -136,18 +137,16 @@ export function DiagnosticInterface({
     detectTimer.current = setTimeout(() => {
       const result = detectLanguage(text);
       if (!result) return;
-      setLanguage((current) => {
-        if (result.code === current) return current;
-        setDetectedLabel(result.label);
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(
-          () => setDetectedLabel(null),
-          TOAST_DURATION_MS,
-        );
-        return result.code;
-      });
+      if (result.code === language) return;
+      setDetectedLabel(result.label);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(
+        () => setDetectedLabel(null),
+        TOAST_DURATION_MS,
+      );
+      onLanguageChange?.(result.code);
     }, DETECT_DEBOUNCE_MS);
-  }, []);
+  }, [language, onLanguageChange]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
@@ -157,7 +156,7 @@ export function DiagnosticInterface({
   };
 
   const handleLanguageChange = (code: string) => {
-    setLanguage(code);
+    onLanguageChange?.(code);
     if (detectTimer.current) clearTimeout(detectTimer.current);
     setDetectedLabel(null);
   };
