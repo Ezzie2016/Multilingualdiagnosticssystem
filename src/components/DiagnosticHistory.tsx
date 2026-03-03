@@ -1,12 +1,13 @@
 import { DiagnosticResult, Language } from '../App';
-import { FileText, TrendingUp, Calendar, User, Globe } from 'lucide-react';
+import { FileText, TrendingUp, Calendar, User, Globe, Trash2 } from 'lucide-react';
 
 interface DiagnosticHistoryProps {
   language: Language;
   history: DiagnosticResult[];
+  onDelete?: (id: string) => void;
 }
 
-export function DiagnosticHistory({ language, history }: DiagnosticHistoryProps) {
+export function DiagnosticHistory({ language, history, onDelete }: DiagnosticHistoryProps) {
   const translations: Record<string, Record<string, string>> = {
     en:  { title: 'Diagnostic History', noHistory: 'No diagnostic history yet', noHistoryDesc: 'Your previous diagnostic sessions will appear here', symptoms: 'Symptoms', diagnoses: 'Diagnoses', timestamp: 'Date & Time', patientProfile: 'Patient Profile', ageRange: 'Age Range', gender: 'Gender', genderNA: 'Not provided', lang: 'Language', clinicianReview: 'Clinician Review', noNotes: 'No clinician notes provided.' },
     es:  { title: 'Historial de Diagnósticos', noHistory: 'Sin historial de diagnósticos', noHistoryDesc: 'Sus sesiones de diagnóstico anteriores aparecerán aquí', symptoms: 'Síntomas', diagnoses: 'Diagnósticos', timestamp: 'Fecha y Hora', patientProfile: 'Perfil del Paciente', ageRange: 'Rango de Edad', gender: 'Género', genderNA: 'No proporcionado', lang: 'Idioma', clinicianReview: 'Revisión Clínica', noNotes: 'No se proporcionaron notas clínicas.' },
@@ -87,16 +88,34 @@ export function DiagnosticHistory({ language, history }: DiagnosticHistoryProps)
               <Calendar style={{ width: 14, height: 14, flexShrink: 0 }} />
               {formatDate(record.timestamp)}
             </div>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              background: 'var(--teal-light)', border: '1px solid #99f6e4',
-              borderRadius: 20, padding: '4px 10px',
-            }}>
-              <Globe style={{ width: 12, height: 12, color: 'var(--teal-hover)' }} />
-              <span style={{
-                fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700,
-                color: 'var(--teal-hover)', textTransform: 'uppercase', letterSpacing: '0.06em',
-              }}>{record.language}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: 'var(--teal-light)', border: '1px solid #99f6e4',
+                borderRadius: 20, padding: '4px 10px',
+              }}>
+                <Globe style={{ width: 12, height: 12, color: 'var(--teal-hover)' }} />
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700,
+                  color: 'var(--teal-hover)', textTransform: 'uppercase', letterSpacing: '0.06em',
+                }}>{record.language}</span>
+              </div>
+              {onDelete && (
+                <button
+                  onClick={() => onDelete(record.id)}
+                  title={t.delete || 'Delete'}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'none', border: 'none', padding: 6,
+                    color: 'var(--red)', cursor: 'pointer',
+                    borderRadius: '50%', transition: 'background 0.2s',
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = 'var(--red-dim)'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <Trash2 style={{ width: 16, height: 16 }} />
+                </button>
+              )}
             </div>
           </div>
 

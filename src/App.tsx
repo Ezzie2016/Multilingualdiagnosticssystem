@@ -5,7 +5,7 @@ import { DiagnosticHistory } from "./components/DiagnosticHistory";
 import { NLPResults } from "./components/NLPResults";
 import { UserMenu } from "./components/UserMenu";
 import { useTranslations } from "./utils/translations";
-import { saveSession, loadSessions } from "./utils/sessionStorage";
+import { saveSession, loadSessions, deleteSession } from "./utils/sessionStorage";
 import { useAuth } from "./context/AuthContext";
 import {
   Activity,
@@ -13,8 +13,10 @@ import {
   Cpu,
   FileSearch,
   Languages,
+  Menu,
   ShieldCheck,
   Sparkles,
+  X,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
@@ -112,6 +114,7 @@ function App() {
   const [history, setHistory] = useState<DiagnosticResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [view, setView] = useState<View>("landing");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [latestResult, setLatestResult] = useState<DiagnosticResult | null>(
     null,
   );
@@ -189,6 +192,20 @@ function App() {
     if (user) {
       saveSession(enriched, user.id).catch((err) =>
         console.error("Failed to persist session:", err),
+      );
+    }
+  };
+
+  const handleDeleteSession = async (id: string) => {
+    setHistory((prev) => prev.filter((r) => r.id !== id));
+    if (latestResult?.id === id) {
+      setLatestResult(
+        history.find((r) => r.id !== id) || null
+      );
+    }
+    if (user) {
+      deleteSession(id).catch((err) =>
+        console.error("Failed to delete session:", err),
       );
     }
   };
@@ -278,11 +295,24 @@ function App() {
             </div>
           </button>
 
-          <nav className="app-nav">
+          <button
+            className="mobile-menu-btn"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            aria-label="Toggle menu"
+          >
+            {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+
+          <nav className={`app-nav ${isMenuOpen ? 'mobile-open' : ''}`}>
             {navItems.map(({ label, view: v, disabled }) => (
               <button
                 key={v}
-                onClick={() => !disabled && setView(v)}
+                onClick={() => {
+                  if (!disabled) {
+                    setView(v);
+                    setIsMenuOpen(false);
+                  }
+                }}
                 disabled={disabled}
                 className={`nav-pill${view === v ? " active" : ""}`}
               >
@@ -424,7 +454,7 @@ function App() {
                 </div>
               </div>
             ) : (
-              <DiagnosticHistory language={language} history={history} />
+              <DiagnosticHistory language={language} history={history} onDelete={handleDeleteSession} />
             )}
           </div>
         )}

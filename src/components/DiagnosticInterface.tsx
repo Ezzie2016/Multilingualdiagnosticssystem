@@ -1,12 +1,44 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PatientProfile, AgeRangeOption, Language } from "../App";
 import { detectLanguage } from "../utils/detectLanguage";
 import { useTranslations } from "../utils/translations";
 import { LanguageSelector } from "./LanguageSelector";
-import { Search, X } from "lucide-react";
+import { useVoice, VOICE_LISTENING } from "../utils/useVoice";
+import { DocumentUpload } from "./DocumentUpload";
+import type { ExtractionResult } from "../utils/documentExtractor";
+import { Search, X, Mic, MicOff, Square, Paperclip, ChevronDown } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 
-import type { DiagnosticResult, Language, PatientProfile } from "../App";
+interface Entity {
+  text: string;
+  type: "symptom" | "body_part" | "duration" | "severity";
+  confidence: number;
+}
+
+interface Diagnosis {
+  condition: string;
+  confidence: number;
+  description: string;
+  recommendations: string[];
+}
+
+export interface DiagnosticResult {
+  id: string;
+  timestamp: string | Date;
+  language: Language;
+  symptoms: string;
+  entities: Entity[];
+  diagnoses: Diagnosis[];
+  patientName?: string;
+  patientProfile?: PatientProfile;
+  auditTrail?: {
+    timestamp: Date;
+    actor: "system" | "patient" | "doctor";
+    action: string;
+    details: string;
+  }[];
+}
 
 /* ─── Medical search result shape from /api/medical/search ──────────────── */
 
@@ -106,11 +138,13 @@ const SEARCH_MIN_CHARS = 3;
 /* ─── Component ─────────────────────────────────────────────────────────── */
 
 export function DiagnosticInterface({
-  language: langProp = "en",
+  language = "en" as Language,
   onLanguageChange,
   onDiagnosticComplete,
 }: Props) {
   const [symptoms, setSymptoms] = useState("");
+  const [uploadOpen,   setUploadOpen]   = useState(false);
+  const [extractedDoc, setExtractedDoc] = useState<ExtractionResult | null>(null);
   const [detectedLabel, setDetectedLabel] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -122,7 +156,32 @@ export function DiagnosticInterface({
   const [searchDismissed, setSearchDismissed] = useState(false);
 
   const charCount = symptoms.length;
-  const language = langProp;
+
+  // ── Voice input ────────────────────────────────────────────────────────────
+  const handleTranscript = useCallback((text: string) => {
+    setSymptoms(text);
+    if (error) setError("");
+    runDetection(text);
+    runSearch(text, language);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [error, language]);
+
+  const {
+    isListening,
+    isSpeaking: _isSpeaking,
+    recognitionSupported,
+    error: voiceError,
+    startListening,
+    stopListening,
+  } = useVoice(language, handleTranscript);
+
+  const toggleListening = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
 
   const detectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -235,10 +294,32 @@ export function DiagnosticInterface({
 
   /* ── Submit ──────────────────────────────────────────────────────────── */
 
+  // ── Document upload handler ──────────────────────────────────────────────────
+  const handleDocExtracted = (result: ExtractionResult) => {
+    setExtractedDoc(result);
+    setError("");
+    // Pre-fill textarea so user can see/edit the extracted text
+    if (result.method !== "image-llm") {
+      setSymptoms(result.text.slice(0, 2000));
+      runDetection(result.text);
+    }
+  };
+
+  const handleDocClear = () => {
+    setExtractedDoc(null);
+    setSymptoms("");
+    setError("");
+    setUploadOpen(false);
+  };
+
   const handleSubmit = async () => {
-    const trimmed = symptoms.trim();
+    // Determine text to analyse
+    // Use extracted document text if one has been loaded, else fall back to typed symptoms
+    const sourceText = extractedDoc ? extractedDoc.text : symptoms;
+
+    const trimmed = sourceText.trim();
     if (!trimmed) {
-      setError(t.diagErrEmpty);
+      setError(extractedDoc === null && !symptoms.trim() ? t.diagErrEmpty : t.diagErrEmpty);
       return;
     }
     if (trimmed.length < 10) {
@@ -348,6 +429,104 @@ export function DiagnosticInterface({
         </p>
       </div>
 
+      {/* ── Voice input bar ────────────────────────────────────────────── */}
+      {recognitionSupported && (
+        <div
+          style={{
+            marginBottom: 10,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "10px 16px",
+            background: isListening ? "var(--teal-light)" : "var(--surface-2)",
+            border: isListening ? "1px solid var(--teal)" : "1px solid var(--border)",
+            borderRadius: "var(--radius-xl)",
+            transition: "all 0.25s",
+          }}
+        >
+          {/* Mic toggle button */}
+          <button
+            onClick={toggleListening}
+            title={isListening ? "Stop recording" : "Start voice input"}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              border: "none",
+              background: isListening ? "var(--teal)" : "var(--surface)",
+              color: isListening ? "#fff" : "var(--ink-muted)",
+              cursor: "pointer",
+              transition: "all 0.2s",
+              flexShrink: 0,
+              boxShadow: isListening
+                ? "0 0 0 6px rgba(20,184,166,0.18)"
+                : "0 1px 3px rgba(0,0,0,0.08)",
+            }}
+          >
+            {isListening ? <Square size={15} /> : <Mic size={15} />}
+          </button>
+
+          {/* Status text */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {isListening ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: "var(--teal)",
+                    display: "inline-block",
+                    animation: "pulse 1.1s ease-in-out infinite",
+                    flexShrink: 0,
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 13,
+                    color: "var(--teal)",
+                    fontFamily: "var(--font-mono)",
+                    fontWeight: 600,
+                  }}
+                >
+                  {VOICE_LISTENING[language] ?? VOICE_LISTENING.en}
+                </span>
+              </div>
+            ) : (
+              <span
+                style={{
+                  fontSize: 13,
+                  color: "var(--ink-muted)",
+                }}
+              >
+                {language === "yo" && "Tẹ bọtini ki o sọ awọn aami aisan rẹ"}
+                {language === "ig" && "Pịa bọtịnụ were kwuo mgbaàmà gị"}
+                {language === "ha" && "Danna maɓallin ka yi magana game da alamominka"}
+                {language === "pcm" && "Press button, talk your symptoms"}
+                {language === "en" && "Press the button and speak your symptoms"}
+              </span>
+            )}
+          </div>
+
+          {/* Right: mic label */}
+          <span
+            style={{
+              fontSize: 11,
+              fontFamily: "var(--font-mono)",
+              color: isListening ? "var(--teal)" : "var(--ink-muted)",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              flexShrink: 0,
+            }}
+          >
+            {isListening ? "● REC" : "VOICE"}
+          </span>
+        </div>
+      )}
+
       {/* ── Input card ─────────────────────────────────────────────────── */}
       <div
         style={{
@@ -412,8 +591,70 @@ export function DiagnosticInterface({
               language={language}
               onLanguageChange={handleLanguageChange}
             />
+
+            {/* Upload button */}
+            <button
+              onClick={() => setUploadOpen(o => !o)}
+              title="Upload a document"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "5px 11px",
+                background: uploadOpen || extractedDoc
+                  ? "var(--teal-light)"
+                  : "var(--surface)",
+                border: uploadOpen || extractedDoc
+                  ? "1px solid var(--teal)"
+                  : "1px solid var(--border-2)",
+                borderRadius: 100,
+                color: uploadOpen || extractedDoc ? "var(--teal)" : "var(--ink-muted)",
+                cursor: "pointer",
+                fontSize: 12,
+                fontFamily: "var(--font-mono)",
+                transition: "all 0.18s",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Paperclip style={{ width: 13, height: 13 }} />
+              {extractedDoc
+                ? extractedDoc.fileName.slice(0, 16) + (extractedDoc.fileName.length > 16 ? "…" : "")
+                : (language === "yo" ? "Gbe Iwe" : language === "ig" ? "Bulite" : language === "ha" ? "Loda" : language === "pcm" ? "Upload" : "Upload")
+              }
+              <ChevronDown
+                style={{
+                  width: 11,
+                  height: 11,
+                  transform: uploadOpen ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.18s",
+                }}
+              />
+            </button>
           </div>
         </div>
+
+        {/* ── Upload panel (slides open above textarea) ──────────────────── */}
+        {uploadOpen && (
+          <div
+            style={{
+              borderBottom: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              padding: "16px",
+            }}
+          >
+            <DocumentUpload
+              language={language}
+              onExtracted={(result) => {
+                handleDocExtracted(result);
+                if (result.method !== "image-llm") {
+                  setUploadOpen(false); // auto-close after successful extraction
+                }
+              }}
+              onClear={handleDocClear}
+              extracted={extractedDoc}
+            />
+          </div>
+        )}
 
         {/* Textarea */}
         <textarea
@@ -440,7 +681,7 @@ export function DiagnosticInterface({
           }}
         />
 
-        {/* Footer bar */}
+        {/* Footer bar — char count + shortcut only */}
         <div
           style={{
             display: "flex",
@@ -465,6 +706,27 @@ export function DiagnosticInterface({
           </span>
         </div>
       </div>
+
+      {/* Voice error */}
+      {voiceError && (
+        <div
+          style={{
+            marginTop: 8,
+            padding: "9px 14px",
+            background: "#fef2f2",
+            border: "1px solid #fca5a5",
+            borderRadius: "var(--radius)",
+            color: "#dc2626",
+            fontSize: 13,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <MicOff size={14} />
+          {voiceError}
+        </div>
+      )}
 
       {/* ── Medical Knowledge Suggestions ─────────────────────────────── */}
       {(showSuggestions || searchLoading) && (

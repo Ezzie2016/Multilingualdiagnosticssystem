@@ -1,5 +1,19 @@
 const http = require("node:http");
 const { URL } = require("node:url");
+const fs = require("node:fs");
+const path = require("node:path");
+
+// Load .env file manually since dotenv is not installed
+const envPath = path.resolve(process.cwd(), ".env");
+if (fs.existsSync(envPath)) {
+  fs.readFileSync(envPath, "utf-8").split("\n").forEach((line) => {
+    const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+    if (match) {
+      process.env[match[1]] = match[2].trim();
+    }
+  });
+}
+
 const {
   analyzeWithMedicalBank,
   getKnowledgeContextForPrompt,
@@ -15,7 +29,7 @@ const NLP_PROVIDER = process.env.NLP_PROVIDER || "ollama";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.2:3b";
 const FHIR_TERMINOLOGY_BASE_URL = process.env.FHIR_TERMINOLOGY_BASE_URL || "";
 
 // ─── Condition catalog (rule-based fallback) ──────────────────────────────────
@@ -491,6 +505,53 @@ async function resolveAnalysis(symptoms, language) {
   throw new Error(`Unsupported NLP_PROVIDER: ${NLP_PROVIDER}`);
 }
 
+async function translateText(text, language) {
+  if (language === "en" || !text) return text;
+
+  const langNames = {
+    en: "English",
+    yo: "Yoruba",
+    ig: "Igbo",
+    ha: "Hausa",
+    pcm: "Nigerian Pidgin English",
+  };
+  const langName = langNames[language] || language;
+  const prompt = `Translate the following medical text into ${langName}. Return ONLY the translated text, nothing else.\n\nText:\n${text}`;
+
+  let translatedText = text;
+        
+  try {
+    if (NLP_PROVIDER === "openai" || (NLP_PROVIDER === "auto" && OPENAI_API_KEY)) {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          temperature: 0.3,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      if (response.ok) {
+        const completion = await response.json();
+        translatedText = completion?.choices?.[0]?.message?.content || text;
+      }
+    } else {
+      const response = await fetch(`${OLLAMA_URL}/api/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: OLLAMA_MODEL, prompt, stream: false }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        translatedText = data?.response || text;
+      }
+    }
+  } catch (error) {
+    console.error("Translation failed:", error.message);
+  }
+  return translatedText.trim();
+}
+
 // ─── HTTP server ──────────────────────────────────────────────────────────────
 
 function sendJson(res, statusCode, data) {
@@ -602,9 +663,61 @@ const server = http.createServer((req, res) => {
         } catch (error) {
           console.error("Falling back to rule-based analysis:", error.message);
           result = buildRuleBasedResponse(symptoms, language);
+          
+          if (language !== "en") {
+            const isFallbackStrings = result.diagnoses.length === 1 && result.diagnoses[0].confidence === 0.3;
+            if (!isFallbackStrings) {
+              for (const diag of result.diagnoses) {
+                diag.condition = await translateText(diag.condition, language);
+                diag.description = await translateText(diag.description, language);
+                for (let i = 0; i < diag.recommendations.length; i++) {
+                  diag.recommendations[i] = await translateText(diag.recommendations[i], language);
+                }
+              }
+            }
+          }
         }
 
         sendJson(res, 200, result);
+      } catch {
+        sendJson(res, 400, { error: "Invalid JSON body" });
+      }
+    });
+
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/translate") {
+    let body = "";
+
+    req.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 5_000_000) req.destroy();
+    });
+
+    req.on("end", async () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const text = String(parsed.text || "").trim();
+        const language = String(parsed.language || "en");
+
+        if (!text) {
+          sendJson(res, 400, { error: "text is required" });
+          return;
+        }
+
+        const langNames = {
+          en: "English",
+          yo: "Yoruba",
+          ig: "Igbo",
+          ha: "Hausa",
+          pcm: "Nigerian Pidgin English",
+        };
+        const langName = langNames[language] || language;
+
+        const translatedText = await translateText(text, language);
+
+        sendJson(res, 200, { translatedText: translatedText.trim() });
       } catch {
         sendJson(res, 400, { error: "Invalid JSON body" });
       }
