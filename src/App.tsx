@@ -5,6 +5,8 @@ import { DiagnosticHistory } from "./components/DiagnosticHistory";
 import { NLPResults } from "./components/NLPResults";
 import { UserMenu } from "./components/UserMenu";
 import { useTranslations } from "./utils/translations";
+import { saveSession, loadSessions } from "./utils/sessionStorage";
+import { useAuth } from "./context/AuthContext";
 import {
   Activity,
   ArrowRight,
@@ -18,21 +20,10 @@ import {
 /* ─── Types ──────────────────────────────────────────────────────────── */
 export type Language =
   | "en"
-  | "es"
-  | "fr"
-  | "de"
-  | "zh"
-  | "ar"
-  | "ha"
   | "yo"
   | "ig"
-  | "pcm"
-  | "ff"
-  | "kr"
-  | "ibb"
-  | "tiv"
-  | "ijc"
-  | "bin";
+  | "ha"
+  | "pcm";
 
 export type GenderOption =
   | "female"
@@ -76,27 +67,21 @@ export interface DiagnosticResult {
   patientName?: string;
   patientProfile?: PatientProfile;
   auditTrail?: AuditEntry[];
+  clinicianReview?: {
+    reviewerName: string;
+    reviewedAt: Date | string;
+    notes?: string;
+  };
 }
 
 type View = "landing" | "diagnostic" | "results" | "history";
 
 const LANGUAGE_OPTIONS: Array<{ code: Language; label: string }> = [
-  { code: "en", label: "English" },
-  { code: "es", label: "Spanish" },
-  { code: "fr", label: "French" },
-  { code: "de", label: "German" },
-  { code: "zh", label: "Chinese" },
-  { code: "ar", label: "Arabic" },
-  { code: "ha", label: "Hausa" },
-  { code: "yo", label: "Yoruba" },
-  { code: "ig", label: "Igbo" },
+  { code: "en",  label: "English" },
+  { code: "yo",  label: "Yoruba" },
+  { code: "ig",  label: "Igbo" },
+  { code: "ha",  label: "Hausa" },
   { code: "pcm", label: "Pidgin" },
-  { code: "ff", label: "Fula" },
-  { code: "kr", label: "Kanuri" },
-  { code: "ibb", label: "Ibibio" },
-  { code: "tiv", label: "Tiv" },
-  { code: "ijc", label: "Ijo" },
-  { code: "bin", label: "Edo" },
 ];
 
 const SUPPORTED_LANGUAGE_CODES = new Set<Language>(
@@ -108,24 +93,17 @@ function normalizeLanguage(code: string): Language {
   return SUPPORTED_LANGUAGE_CODES.has(normalized) ? normalized : "en";
 }
 
-function promptForLanguage(defaultLanguage: Language): Language {
-  const inputToCode = new Map<string, Language>();
-  for (const option of LANGUAGE_OPTIONS) {
-    inputToCode.set(option.code, option.code);
-    inputToCode.set(option.label.toLowerCase(), option.code);
+async function resolveInitialLanguage(stored: string | null): Promise<Language> {
+  if (stored) {
+    return normalizeLanguage(stored);
   }
-  inputToCode.set("francais", "fr");
-  inputToCode.set("français", "fr");
-
-  const choice = window.prompt(
-    `Choose language (${LANGUAGE_OPTIONS.map((option) => `${option.code}=${option.label}`).join(", ")}):`,
-    defaultLanguage,
-  );
-  if (choice === null) return defaultLanguage;
-
-  const picked = inputToCode.get(choice.trim().toLowerCase());
-  return picked ?? defaultLanguage;
+  if (typeof navigator !== "undefined" && navigator.language) {
+    const browserLang = navigator.language.split("-")[0];
+    return normalizeLanguage(browserLang);
+  }
+  return "en";
 }
+
 
 /* ─── Component ──────────────────────────────────────────────────────── */
 function App() {
@@ -143,31 +121,24 @@ function App() {
     language: "en",
   });
   const promptHandledRef = useRef(false);
+  const { user } = useAuth();
 
   // All UI strings for the current language
   const t = useTranslations(language);
 
-  // RTL support for Arabic
-  useEffect(() => {
-    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
-  }, [language]);
 
   useEffect(() => {
     if (promptHandledRef.current) return;
     promptHandledRef.current = true;
 
-    let defaultLanguage: Language = "en";
-    try {
-      const stored = localStorage.getItem("mds_ui_language");
-      if (stored) defaultLanguage = normalizeLanguage(stored);
-    } catch {}
+    let stored: string | null = null;
+    try { stored = localStorage.getItem("mds_ui_language"); } catch {}
 
-    const selectedLanguage = promptForLanguage(defaultLanguage);
-    setLanguage(selectedLanguage);
-    try {
-      localStorage.setItem("mds_ui_language", selectedLanguage);
-    } catch {}
-    setLanguageReady(true);
+    resolveInitialLanguage(stored).then((lang) => {
+      setLanguage(lang);
+      try { localStorage.setItem("mds_ui_language", lang); } catch {}
+      setLanguageReady(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -179,16 +150,13 @@ function App() {
 
   useEffect(() => {
     setHistoryLoading(true);
-    try {
-      const raw = localStorage.getItem("mds_sessions");
-      const sessions: DiagnosticResult[] = raw ? JSON.parse(raw) : [];
-      setHistory(sessions);
-      if (sessions.length > 0) setLatestResult(sessions[0]);
-    } catch {
-      setHistory([]);
-    } finally {
-      setHistoryLoading(false);
-    }
+    loadSessions()
+      .then((sessions) => {
+        setHistory(sessions);
+        if (sessions.length > 0) setLatestResult(sessions[0]);
+      })
+      .catch(() => setHistory([]))
+      .finally(() => setHistoryLoading(false));
   }, []);
 
   useEffect(() => {
@@ -218,12 +186,11 @@ function App() {
     setHistory(updated);
     setLatestResult(enriched);
     setView("results");
-    try {
-      localStorage.setItem(
-        "mds_sessions",
-        JSON.stringify(updated.slice(0, 100)),
+    if (user) {
+      saveSession(enriched, user.id).catch((err) =>
+        console.error("Failed to persist session:", err),
       );
-    } catch {}
+    }
   };
 
   const navItems = [

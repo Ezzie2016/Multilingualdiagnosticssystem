@@ -1,18 +1,11 @@
 ﻿import { useState, useRef, useEffect } from "react";
 
 export const LANGUAGES = [
-  { code: "en", label: "English", flag: "🇬🇧" },
-  { code: "es", label: "Español", flag: "🇪🇸" },
-  { code: "fr", label: "Français", flag: "🇫🇷" },
-  { code: "de", label: "Deutsch", flag: "🇩🇪" },
-  { code: "zh", label: "中文", flag: "🇨🇳" },
-  { code: "ar", label: "العربية", flag: "🇸🇦" },
-  { code: "ha", label: "Hausa", flag: "🇳🇬" },
-  { code: "yo", label: "Yorùbá", flag: "🇳🇬" },
-  { code: "ig", label: "Igbo", flag: "🇳🇬" },
-  { code: "pcm", label: "Pidgin", flag: "🇳🇬" },
-  { code: "ff", label: "Fula", flag: "🇳🇬" },
-  { code: "kr", label: "Kanuri", flag: "🇳🇬" },
+  { code: "en",  label: "English",  flag: "🇬🇧" },
+  { code: "yo",  label: "Yorùbá",   flag: "🇳🇬" },
+  { code: "ig",  label: "Igbo",     flag: "🇳🇬" },
+  { code: "ha",  label: "Hausa",    flag: "🇳🇬" },
+  { code: "pcm", label: "Pidgin",   flag: "🇳🇬" },
 ];
 
 interface Props {

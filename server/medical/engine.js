@@ -1,5 +1,6 @@
 const {
   SYMPTOM_BANK,
+  BODY_PART_BANK,
   CONDITION_BANK,
   SYMPTOM_CONDITION_WEIGHTS,
   SEVERITY_TERMS,
@@ -189,6 +190,32 @@ function findSymptomMatches(symptomsText, language) {
   return uniqueById(matches);
 }
 
+function findBodyPartEntities(symptomsText, language) {
+  const normalizedText = normalizeText(symptomsText);
+  const languages = getLanguageCandidates(language);
+  const matches = [];
+
+  for (const bodyPart of BODY_PART_BANK) {
+    for (const lang of languages) {
+      const labels = bodyPart.labels[lang] || [];
+      const found = labels.find((label) =>
+        normalizedText.includes(normalizeText(label)),
+      );
+      if (found) {
+        matches.push({
+          id: bodyPart.id,
+          text: found,
+          type: "body_part",
+          confidence: 0.84,
+        });
+        break;
+      }
+    }
+  }
+
+  return uniqueById(matches);
+}
+
 function findSeverityEntities(symptomsText, language) {
   const normalizedText = normalizeText(symptomsText);
   const languages = getLanguageCandidates(language);
@@ -253,12 +280,88 @@ function scoreConditions(symptomMatches, severityCount) {
   return scores;
 }
 
-function toConfidence(score) {
-  return Math.max(0.3, Math.min(0.95, 0.3 + score * 0.5));
+/**
+ * Convert a raw symptom-match score into a calibrated confidence value.
+ *
+ * Two adjustments are applied on top of the base linear mapping:
+ *
+ * 1. Entity-count penalty: when the fallback engine detects very few
+ *    entities (< 2 symptoms) the extraction quality is likely poor —
+ *    either because the user wrote very little, or because the phrase
+ *    didn't match any keyword. We cap confidence at 0.55 in that case
+ *    so the UI cannot show a "High" badge on a single-symptom match.
+ *
+ * 2. Hard floor/ceiling: confidence is always kept in [0.30, 0.95] to
+ *    avoid implying certainty or complete uselessness.
+ *
+ * @param {number} score       - raw weighted symptom-condition score
+ * @param {number} entityCount - total number of extracted entities
+ */
+function toConfidence(score, entityCount = 0) {
+  const base = 0.3 + score * 0.5;
+
+  // Penalise weak extraction: fewer than 2 symptom entities → cap at 0.55
+  const extractionCap = entityCount < 2 ? 0.55 : 0.95;
+
+  return Math.max(0.3, Math.min(extractionCap, base));
 }
 
-function buildDiagnoses(conditionScores) {
+// Localised strings for the no-match fallback and generic fallback recommendations
+const FALLBACK_STRINGS = {
+  en: {
+    condition:       "No clear match found",
+    description:     "The submitted symptom text did not confidently match the current medical knowledge bank.",
+    rec1:            "Describe your key symptoms more explicitly",
+    rec2:            "Include how long symptoms have lasted and how severe they are",
+    rec3:            "Consult a healthcare professional for a proper diagnosis",
+    genericRec:      "Consult a healthcare professional",
+    genericDesc:     "This condition requires clinical assessment.",
+  },
+  yo: {
+    condition:       "Ko si ibamu to pe",
+    description:     "Apejuwe aami aisan ti a fi silẹ ko baamu si ohun ti o wa ninu ile-iṣẹ iṣoogun lọwọlọwọ.",
+    rec1:            "Ṣapejuwe awọn aami aisan akọkọ rẹ ni kedere",
+    rec2:            "Fi kun bi o ṣe pẹ to ati bii o ṣe burú",
+    rec3:            "Kan si alamọdaju ilera fun iwadii to peye",
+    genericRec:      "Kan si alamọdaju ilera",
+    genericDesc:     "Ipo yii nilo iṣayẹwo ile-iwosan.",
+  },
+  ig: {
+    condition:       "Enweghị njikọ doro anya",
+    description:     "Akụkọ mgbaàmà e nyefere adabaghị nke ọma na ụlọ ọrụ ahụike ugbu a.",
+    rec1:            "Kọọ mgbaàmà ndị isi gị n'ụzọ doro anya",
+    rec2:            "Tinye oge o ruo na ịdị njọ ya",
+    rec3:            "Kpọtụrụ ọkachamara ahụike maka nyocha ziri ezi",
+    genericRec:      "Kpọtụrụ ọkachamara ahụike",
+    genericDesc:     "Ọnọdụ a chọrọ nyocha ụlọ ọgwụ.",
+  },
+  ha: {
+    condition:       "Ba a sami dacewa ba",
+    description:     "Rubutun alamomin cuta da aka aika bai yi dacewa da bayanan ƙwaƙwalwa na asibiti na yanzu ba.",
+    rec1:            "Bayyana alamomin cutar ku a sarari",
+    rec2:            "Haɗa da tsawon lokaci da tsananin ciwo",
+    rec3:            "Tuntubi ƙwararren ma'aikacin lafiya don ganewar da ta dace",
+    genericRec:      "Tuntubi ƙwararren ma'aikacin lafiya",
+    genericDesc:     "Wannan yanayin yana buƙatar kimantawa na asibiti.",
+  },
+  pcm: {
+    condition:       "We no find any match",
+    description:     "The symptoms wey you write no match anything wey dey inside our medical system now.",
+    rec1:            "Describe your symptoms clearly",
+    rec2:            "Add how long e don dey and how e bad",
+    rec3:            "Abeg go see proper doctor for correct diagnosis",
+    genericRec:      "Go see proper doctor",
+    genericDesc:     "This condition need doctor to check am.",
+  },
+};
+
+function getFallback(language) {
+  return FALLBACK_STRINGS[language] || FALLBACK_STRINGS.en;
+}
+
+function buildDiagnoses(conditionScores, entityCount = 0, language = "en") {
   const conditionsMap = getCombinedConditions();
+  const fb = getFallback(language);
 
   const ranked = Array.from(conditionScores.entries())
     .sort((a, b) => b[1] - a[1])
@@ -267,15 +370,10 @@ function buildDiagnoses(conditionScores) {
   if (ranked.length === 0) {
     return [
       {
-        condition: "No clear match found",
-        confidence: 0.3,
-        description:
-          "The submitted symptom text did not confidently match the current medical knowledge bank.",
-        recommendations: [
-          "Describe key symptoms explicitly",
-          "Include severity and duration",
-          "Consult a healthcare professional for diagnosis",
-        ],
+        condition:   fb.condition,
+        confidence:  0.3,
+        description: fb.description,
+        recommendations: [fb.rec1, fb.rec2, fb.rec3],
       },
     ];
   }
@@ -283,24 +381,33 @@ function buildDiagnoses(conditionScores) {
   return ranked.map(([conditionId, score]) => {
     const condition = conditionsMap[conditionId];
     return {
-      condition: condition?.name || conditionId,
-      confidence: toConfidence(score),
-      description:
-        condition?.description || "This condition requires clinical assessment.",
-      recommendations: condition?.recommendations || [
-        "Consult a healthcare professional",
-      ],
+      condition:   condition?.name    || conditionId,
+      confidence:  toConfidence(score, entityCount),
+      description: condition?.description || fb.genericDesc,
+      recommendations: condition?.recommendations || [fb.genericRec],
     };
   });
 }
 
 function analyzeWithMedicalBank(symptoms, language) {
-  const symptomEntities = findSymptomMatches(symptoms, language);
+  const symptomEntities  = findSymptomMatches(symptoms, language);
+  const bodyPartEntities = findBodyPartEntities(symptoms, language);
   const durationEntities = findDurationEntities(symptoms);
   const severityEntities = findSeverityEntities(symptoms, language);
 
+  const allEntities = [
+    ...symptomEntities,
+    ...bodyPartEntities,
+    ...durationEntities,
+    ...severityEntities,
+  ];
+
+  // Entity count used to calibrate confidence — only symptom entities count
+  // toward extraction quality (body parts / duration / severity are supplemental)
+  const entityCount = symptomEntities.length;
+
   const conditionScores = scoreConditions(symptomEntities, severityEntities.length);
-  const diagnoses = buildDiagnoses(conditionScores);
+  const diagnoses = buildDiagnoses(conditionScores, entityCount, language);
 
   return {
     id: `diag-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
@@ -308,9 +415,7 @@ function analyzeWithMedicalBank(symptoms, language) {
     language,
     symptoms,
     diagnoses,
-    entities: [...symptomEntities, ...durationEntities, ...severityEntities].map(
-      ({ text, type, confidence }) => ({ text, type, confidence }),
-    ),
+    entities: allEntities.map(({ text, type, confidence }) => ({ text, type, confidence })),
   };
 }
 

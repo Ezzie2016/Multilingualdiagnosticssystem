@@ -2,36 +2,30 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { detectLanguage } from "../utils/detectLanguage";
 import { useTranslations } from "../utils/translations";
 import { LanguageSelector } from "./LanguageSelector";
+import { Search, X } from "lucide-react";
 
-interface Entity {
-  text: string;
-  type: "symptom" | "body_part" | "duration" | "severity";
-  confidence: number;
+/* ─── Types ─────────────────────────────────────────────────────────────── */
+
+import type { DiagnosticResult, Language, PatientProfile } from "../App";
+
+/* ─── Medical search result shape from /api/medical/search ──────────────── */
+
+interface MedicalSearchResult {
+  type: "symptom" | "condition" | string;
+  code?: string;
+  label: string;
+  description?: string;
+  relatedConditions?: string[];
+  relatedSymptoms?: string[];
 }
 
-interface Diagnosis {
-  condition: string;
-  confidence: number;
-  description: string;
-  recommendations: string[];
-}
-
-export interface DiagnosticResult {
-  id: string;
-  timestamp: string | Date;
+interface MedicalSearchResponse {
+  query: string;
   language: string;
-  symptoms: string;
-  entities: Entity[];
-  diagnoses: Diagnosis[];
-  patientName?: string;
-  patientProfile?: { ageRange: string; gender: string; language: string };
-  auditTrail?: {
-    timestamp: Date;
-    actor: "system" | "patient" | "doctor";
-    action: string;
-    details: string;
-  }[];
+  results: MedicalSearchResult[];
 }
+
+/* ─── API helpers ────────────────────────────────────────────────────────── */
 
 async function analyzeSymptoms(
   symptoms: string,
@@ -49,17 +43,27 @@ async function analyzeSymptoms(
   return res.json();
 }
 
+async function searchMedical(
+  q: string,
+  language: string,
+): Promise<MedicalSearchResponse> {
+  const params = new URLSearchParams({ q, language });
+  const res = await fetch(`/api/medical/search?${params}`);
+  if (!res.ok) throw new Error("Search failed");
+  return res.json();
+}
+
+/* ─── Props ─────────────────────────────────────────────────────────────── */
+
 interface Props {
-  language?: string;
+  language?: Language;
   onLanguageChange?: (code: string) => void;
-  patientProfile?: { ageRange: string; gender: string; language: string };
-  onPatientProfileChange?: (p: {
-    ageRange: string;
-    gender: string;
-    language: string;
-  }) => void;
+  patientProfile?: PatientProfile;
+  onPatientProfileChange?: (p: PatientProfile) => void;
   onDiagnosticComplete: (result: DiagnosticResult) => void;
 }
+
+/* ─── Example prompts ────────────────────────────────────────────────────── */
 
 const EXAMPLE_PROMPTS: Record<string, string[]> = {
   en: [
@@ -68,40 +72,38 @@ const EXAMPLE_PROMPTS: Record<string, string[]> = {
     "Sharp abdominal pain lower right side, started yesterday, getting worse",
     "Extreme fatigue, dizziness when standing, muscle weakness for 1 week",
   ],
-  es: [
-    "Tengo dolor de pecho severo que se irradia al brazo izquierdo desde hace 2 horas con dificultad para respirar",
-    "Dolor de cabeza persistente y fiebre por 3 días, náuseas leves por las mañanas",
-    "Dolor abdominal agudo en el lado inferior derecho, comenzó ayer, empeorando",
-    "Fatiga extrema, mareos al levantarse, debilidad muscular por 1 semana",
+  yo: [
+    "Irora àyà lile ti n lọ si apa osi mi fun wakati 2 pẹlu iṣoro imi",
+    "Orififo ati iba fun ọjọ 3, inu riru kekere ni owurọ",
+    "Irora inú lile ni apa isalẹ otun, bẹrẹ lana, n buru sii",
+    "Arẹwèsì nla, ori n yi nigba ti mo dide, ailera iṣan fun ọsẹ 1",
   ],
-  fr: [
-    "J'ai une douleur thoracique sévère irradiant vers le bras gauche depuis 2 heures avec essoufflement",
-    "Maux de tête persistants et fièvre depuis 3 jours, légères nausées le matin",
-    "Douleur abdominale aiguë côté inférieur droit, commencée hier, s'aggravant",
-    "Fatigue extrême, vertiges en se levant, faiblesse musculaire depuis 1 semaine",
+  ig: [
+    "Ọwụwa obi ike na-agba n'aka ekpe m maka awa 2 na iku ume ike",
+    "Isi ọwụwa na ọkụ ahụ maka ụbọchị 3, ọfụfụ afọ n'ụtụtụ",
+    "Mgbu n'afọ n'akụkụ aka nri n'okpuru, bidoro n'echi, na-abawanye",
+    "Aghara ike, isi na-atụrụ mgbe m na-eguzo, ike adịghị n'ahụ maka izu 1",
   ],
-  de: [
-    "Ich habe seit 2 Stunden starke Brustschmerzen, die in den linken Arm ausstrahlen, mit Atemnot",
-    "Anhaltende Kopfschmerzen und Fieber seit 3 Tagen, leichte Übelkeit am Morgen",
-    "Stechende Bauchschmerzen rechts unten, seit gestern, werden schlimmer",
-    "Extreme Müdigkeit, Schwindel beim Aufstehen, Muskelschwäche seit 1 Woche",
+  ha: [
+    "Ciwon kirji mai tsanani da ke tafiya zuwa hannuna na hagu tsawon sa'o'i 2 tare da wahalar numfashi",
+    "Ciwon kai mai dawwama da zazzabi tsawon kwana 3, ɗan amai a safiya",
+    "Ciwon ciki mai tsini a gefen dama na ƙasa, ya fara jiya, yana ƙara muni",
+    "Gajiya mai tsanani, jiri jiri yayin tashi, rashin karfi na kwana 7",
   ],
-  ar: [
-    "لدي ألم شديد في الصدر يمتد إلى ذراعي اليسرى منذ ساعتين مع ضيق في التنفس",
-    "صداع مستمر وحمى منذ 3 أيام وغثيان خفيف في الصباح",
-    "ألم حاد في البطن في الجانب الأيمن السفلي بدأ أمس ويزداد سوءًا",
-    "إرهاق شديد ودوخة عند الوقوف وضعف عضلي منذ أسبوع",
-  ],
-  zh: [
-    "我左臂有放射性胸痛已经2小时，伴有呼吸急促",
-    "持续头痛和发烧3天，早晨轻微恶心",
-    "右下腹剧烈疼痛，昨天开始，越来越严重",
-    "极度疲劳，站立时头晕，肌肉无力持续1周",
+  pcm: [
+    "My chest dey pain me well well, e dey go my left arm for 2 hours, e hard to breathe",
+    "Head dey pain me and fever dey for 3 days, small belle dey do me for morning",
+    "Sharp pain for right side of my belly down, e start yesterday, e dey worse",
+    "Body weak well well, head dey spin when I stand up, muscle no get power for 1 week",
   ],
 };
 
 const DETECT_DEBOUNCE_MS = 500;
 const TOAST_DURATION_MS = 2800;
+const SEARCH_DEBOUNCE_MS = 600;
+const SEARCH_MIN_CHARS = 3;
+
+/* ─── Component ─────────────────────────────────────────────────────────── */
 
 export function DiagnosticInterface({
   language: langProp = "en",
@@ -112,56 +114,127 @@ export function DiagnosticInterface({
   const [detectedLabel, setDetectedLabel] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Medical search state
+  const [searchResults, setSearchResults] = useState<MedicalSearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchDismissed, setSearchDismissed] = useState(false);
+
   const charCount = symptoms.length;
   const language = langProp;
 
   const detectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (detectTimer.current) clearTimeout(detectTimer.current);
       if (toastTimer.current) clearTimeout(toastTimer.current);
+      if (searchTimer.current) clearTimeout(searchTimer.current);
     };
   }, []);
 
-  // Translations for the current language
-  const t = useTranslations(language);
+  // Reset dismissed state when symptoms are cleared
+  useEffect(() => {
+    if (symptoms.length === 0) {
+      setSearchResults([]);
+      setSearchDismissed(false);
+      setSearchQuery("");
+    }
+  }, [symptoms]);
 
-  // Example prompts for current language (fall back to English)
+  const t = useTranslations(language);
   const examples = EXAMPLE_PROMPTS[language] ?? EXAMPLE_PROMPTS.en;
 
-  // ── Language detection ──────────────────────────────────────────────────
-  const runDetection = useCallback((text: string) => {
-    if (detectTimer.current) clearTimeout(detectTimer.current);
-    detectTimer.current = setTimeout(() => {
-      const result = detectLanguage(text);
-      if (!result) return;
-      if (result.code === language) return;
-      setDetectedLabel(result.label);
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(
-        () => setDetectedLabel(null),
-        TOAST_DURATION_MS,
-      );
-      onLanguageChange?.(result.code);
-    }, DETECT_DEBOUNCE_MS);
-  }, [language, onLanguageChange]);
+  /* ── Medical search ──────────────────────────────────────────────────── */
+
+  const runSearch = useCallback(
+    (text: string, lang: string) => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+
+      // Extract the last meaningful word/phrase to search for
+      const words = text.trim().split(/\s+/);
+      const lastWords = words.slice(-3).join(" "); // last 3 words as query
+
+      if (lastWords.length < SEARCH_MIN_CHARS || searchDismissed) return;
+
+      searchTimer.current = setTimeout(async () => {
+        setSearchLoading(true);
+        try {
+          const data = await searchMedical(lastWords, lang);
+          if (data.results && data.results.length > 0) {
+            setSearchResults(data.results.slice(0, 5));
+            setSearchQuery(lastWords);
+          } else {
+            setSearchResults([]);
+          }
+        } catch {
+          // Silently fail — search is enhancement only
+          setSearchResults([]);
+        } finally {
+          setSearchLoading(false);
+        }
+      }, SEARCH_DEBOUNCE_MS);
+    },
+    [searchDismissed],
+  );
+
+  /* ── Language detection ──────────────────────────────────────────────── */
+
+  const runDetection = useCallback(
+    (text: string) => {
+      if (detectTimer.current) clearTimeout(detectTimer.current);
+      detectTimer.current = setTimeout(() => {
+        const result = detectLanguage(text);
+        if (!result) return;
+        if (result.code === language) return;
+        setDetectedLabel(result.label);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(
+          () => setDetectedLabel(null),
+          TOAST_DURATION_MS,
+        );
+        onLanguageChange?.(result.code);
+      }, DETECT_DEBOUNCE_MS);
+    },
+    [language, onLanguageChange],
+  );
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setSymptoms(value);
     if (error) setError("");
     runDetection(value);
+    runSearch(value, language);
   };
 
   const handleLanguageChange = (code: string) => {
     onLanguageChange?.(code);
     if (detectTimer.current) clearTimeout(detectTimer.current);
     setDetectedLabel(null);
+    // Re-run search with new language
+    if (symptoms.trim().length >= SEARCH_MIN_CHARS) {
+      runSearch(symptoms, code);
+    }
   };
 
-  // ── Submit ──────────────────────────────────────────────────────────────
+  /* ── Insert suggestion into textarea ────────────────────────────────── */
+
+  const insertSuggestion = (label: string) => {
+    setSymptoms((prev) => {
+      const trimmed = prev.trimEnd();
+      // If ends with a comma or period already, just add the term
+      const sep = trimmed.length > 0 && !trimmed.match(/[,.]$/) ? ", " : " ";
+      return trimmed + sep + label;
+    });
+    setSearchResults([]);
+    setSearchDismissed(true);
+  };
+
+  /* ── Submit ──────────────────────────────────────────────────────────── */
+
   const handleSubmit = async () => {
     const trimmed = symptoms.trim();
     if (!trimmed) {
@@ -174,6 +247,7 @@ export function DiagnosticInterface({
     }
     setLoading(true);
     setError("");
+    setSearchResults([]);
     try {
       const result = await analyzeSymptoms(trimmed, language);
       onDiagnosticComplete(result);
@@ -184,9 +258,25 @@ export function DiagnosticInterface({
     }
   };
 
-  const isRTL = language === "ar";
+  const isRTL = (language as string) === "ar";
+  const showSuggestions =
+    !searchDismissed && searchResults.length > 0 && symptoms.trim().length > 0;
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  /* ── Badge colour per result type ───────────────────────────────────── */
+
+  const typeBadge = (type: string) => {
+    switch (type) {
+      case "symptom":
+        return { bg: "#ccfbf1", color: "#0d9488", label: "Symptom" };
+      case "condition":
+        return { bg: "#e0f2fe", color: "#0369a1", label: "Condition" };
+      default:
+        return { bg: "#f1f5f9", color: "#475569", label: type };
+    }
+  };
+
+  /* ── Render ──────────────────────────────────────────────────────────── */
+
   return (
     <div
       style={{
@@ -195,7 +285,7 @@ export function DiagnosticInterface({
         direction: isRTL ? "rtl" : "ltr",
       }}
     >
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────────────────── */}
       <div style={{ marginBottom: 32 }}>
         <div
           style={{
@@ -258,7 +348,7 @@ export function DiagnosticInterface({
         </p>
       </div>
 
-      {/* Input card */}
+      {/* ── Input card ─────────────────────────────────────────────────── */}
       <div
         style={{
           background: "var(--surface)",
@@ -376,7 +466,221 @@ export function DiagnosticInterface({
         </div>
       </div>
 
-      {/* Error */}
+      {/* ── Medical Knowledge Suggestions ─────────────────────────────── */}
+      {(showSuggestions || searchLoading) && (
+        <div
+          style={{
+            marginTop: 10,
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-xl)",
+            overflow: "hidden",
+            boxShadow: "var(--shadow-sm)",
+          }}
+        >
+          {/* Header */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 14px",
+              borderBottom: "1px solid var(--border)",
+              background: "var(--surface-2)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+              }}
+            >
+              <Search size={13} color="var(--teal)" />
+              <span
+                style={{
+                  fontSize: 11,
+                  fontFamily: "var(--font-mono)",
+                  color: "var(--teal)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                {t.diagSuggestionsLabel ?? "Medical Knowledge"}
+              </span>
+              {searchLoading && (
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    border: "1.5px solid var(--border-2)",
+                    borderTopColor: "var(--teal)",
+                    borderRadius: "50%",
+                    animation: "spin 0.7s linear infinite",
+                    display: "inline-block",
+                  }}
+                />
+              )}
+              {searchQuery && !searchLoading && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "var(--ink-muted)",
+                    fontStyle: "italic",
+                  }}
+                >
+                  — "{searchQuery}"
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                setSearchResults([]);
+                setSearchDismissed(true);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--ink-muted)",
+                padding: 2,
+                display: "flex",
+                alignItems: "center",
+              }}
+              title="Dismiss suggestions"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          {/* Results */}
+          {showSuggestions && (
+            <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
+              {searchResults.map((result, i) => {
+                const badge = typeBadge(result.type);
+                return (
+                  <button
+                    key={i}
+                    onClick={() => insertSuggestion(result.label)}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      padding: "9px 12px",
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius)",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "all 0.12s",
+                      width: "100%",
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "#f0fdf4";
+                      (e.currentTarget as HTMLElement).style.borderColor = "#5eead4";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "var(--surface-2)";
+                      (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
+                    }}
+                  >
+                    {/* Type badge */}
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        marginTop: 2,
+                        padding: "2px 7px",
+                        borderRadius: 100,
+                        fontSize: 10,
+                        fontWeight: 600,
+                        fontFamily: "var(--font-mono)",
+                        letterSpacing: "0.04em",
+                        textTransform: "uppercase",
+                        background: badge.bg,
+                        color: badge.color,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {badge.label}
+                    </span>
+
+                    {/* Label + description */}
+                    <div style={{ minWidth: 0 }}>
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: "var(--ink)",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {result.label}
+                      </p>
+                      {result.description && (
+                        <p
+                          style={{
+                            margin: 0,
+                            marginTop: 2,
+                            fontSize: 12,
+                            color: "var(--ink-muted)",
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {result.description}
+                        </p>
+                      )}
+                      {result.relatedConditions &&
+                        result.relatedConditions.length > 0 && (
+                          <p
+                            style={{
+                              margin: 0,
+                              marginTop: 3,
+                              fontSize: 11,
+                              color: "var(--ink-muted)",
+                              fontStyle: "italic",
+                            }}
+                          >
+                            Related:{" "}
+                            {result.relatedConditions.slice(0, 3).join(", ")}
+                          </p>
+                        )}
+                    </div>
+
+                    {/* Insert hint */}
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        marginLeft: "auto",
+                        fontSize: 10,
+                        color: "var(--teal)",
+                        fontFamily: "var(--font-mono)",
+                        alignSelf: "center",
+                        opacity: 0.7,
+                      }}
+                    >
+                      + add
+                    </span>
+                  </button>
+                );
+              })}
+
+              <p
+                style={{
+                  margin: "4px 4px 2px",
+                  fontSize: 11,
+                  color: "var(--ink-muted)",
+                  lineHeight: 1.5,
+                }}
+              >
+                Click a term to add it to your symptom description.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Error ──────────────────────────────────────────────────────── */}
       {error && (
         <div
           style={{
@@ -396,7 +700,7 @@ export function DiagnosticInterface({
         </div>
       )}
 
-      {/* Example prompts */}
+      {/* ── Example prompts ────────────────────────────────────────────── */}
       <div style={{ marginTop: 24 }}>
         <p
           style={{
@@ -417,7 +721,9 @@ export function DiagnosticInterface({
               onClick={() => {
                 setSymptoms(prompt);
                 setError("");
+                setSearchDismissed(false);
                 runDetection(prompt);
+                runSearch(prompt, language);
               }}
               style={{
                 textAlign: isRTL ? "right" : "left",
@@ -463,7 +769,7 @@ export function DiagnosticInterface({
         </div>
       </div>
 
-      {/* Submit */}
+      {/* ── Submit ─────────────────────────────────────────────────────── */}
       <div
         style={{
           marginTop: 28,

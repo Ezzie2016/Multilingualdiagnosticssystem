@@ -84,7 +84,7 @@ export function AuthPage() {
             <span style={styles.logoIcon}>⬡</span>
           </div>
           <h1 style={styles.appName}>MediLingua</h1>
-          <p style={styles.appTagline}>Multilingual Diagnostics System</p>
+          <p style={styles.appTagline}>Multilingual Diagnosis System</p>
         </div>
 
         {/* Card */}

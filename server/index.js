@@ -179,126 +179,6 @@ const conditionCatalog = {
   },
 };
 
-// ─── Language keyword map (rule-based fallback) ───────────────────────────────
-
-const languageKeywordMap = {
-  en: {
-    headache: "headache",
-    fever: "fever",
-    cough: "cough",
-    sore_throat: "sore throat",
-    nausea: "nausea",
-    dizziness: "dizziness",
-    chest_pain: "chest pain",
-    back_pain: "back pain",
-    fatigue: "fatigue",
-    shortness_of_breath: "shortness of breath",
-    abdominal_pain: "abdominal pain",
-    joint_pain: "joint pain",
-    rash: "rash",
-  },
-  es: {
-    headache: "dolor de cabeza",
-    fever: "fiebre",
-    cough: "tos",
-    sore_throat: "dolor de garganta",
-    nausea: "náuseas",
-    dizziness: "mareos",
-    chest_pain: "dolor en el pecho",
-    back_pain: "dolor de espalda",
-    fatigue: "fatiga",
-    shortness_of_breath: "falta de aire",
-    abdominal_pain: "dolor abdominal",
-    joint_pain: "dolor articular",
-    rash: "sarpullido",
-  },
-  fr: {
-    headache: "mal de tête",
-    fever: "fièvre",
-    cough: "toux",
-    sore_throat: "mal de gorge",
-    nausea: "nausées",
-    dizziness: "étourdissements",
-    chest_pain: "douleur thoracique",
-    back_pain: "douleur au dos",
-    fatigue: "fatigue",
-    shortness_of_breath: "essoufflement",
-    abdominal_pain: "douleur abdominale",
-    joint_pain: "douleur articulaire",
-    rash: "éruption cutanée",
-  },
-  de: {
-    headache: "kopfschmerzen",
-    fever: "fieber",
-    cough: "husten",
-    sore_throat: "halsschmerzen",
-    nausea: "übelkeit",
-    dizziness: "schwindel",
-    chest_pain: "brustschmerzen",
-    back_pain: "rückenschmerzen",
-    fatigue: "müdigkeit",
-    shortness_of_breath: "atemnot",
-    abdominal_pain: "bauchschmerzen",
-    joint_pain: "gelenkschmerzen",
-    rash: "hautausschlag",
-  },
-  ha: {
-    headache: "ciwon kai",
-    fever: "zazzabi",
-    cough: "tari",
-    sore_throat: "ciwon makogaro",
-    nausea: "amai",
-    dizziness: "jiri jiri",
-    chest_pain: "ciwon kirji",
-    back_pain: "ciwon baya",
-    fatigue: "gajiya",
-    shortness_of_breath: "wahalar numfashi",
-    abdominal_pain: "ciwon ciki",
-    rash: "kurji",
-  },
-  yo: {
-    headache: "orififo",
-    fever: "iba",
-    cough: "ikọ",
-    sore_throat: "ọfun fọ",
-    nausea: "eebi",
-    dizziness: "iwọra",
-    chest_pain: "irora àyà",
-    back_pain: "irora ẹhin",
-    fatigue: "arẹwèsì",
-    shortness_of_breath: "ìṣòro ìmí",
-    abdominal_pain: "irora inú",
-    rash: "ẹgbò awọ",
-  },
-  ig: {
-    headache: "isi awọ",
-    fever: "ọkụ ahụ",
-    cough: "ọkwa ọkwa",
-    sore_throat: "ọnọdụ ọnọdụ",
-    nausea: "ọgbu ọgbu",
-    dizziness: "isi ntụrụ",
-    chest_pain: "ọwụwa obi",
-    back_pain: "ọwụwa azụ",
-    fatigue: "aghara",
-    shortness_of_breath: "ọkụkọ ume",
-    abdominal_pain: "ọwụwa afọ",
-    rash: "ọbara n'anụ ahụ",
-  },
-  pcm: {
-    headache: "head dey pain",
-    fever: "fever",
-    cough: "cough",
-    sore_throat: "throat dey pain",
-    nausea: "belle dey do me",
-    dizziness: "head dey turn",
-    chest_pain: "chest dey pain",
-    back_pain: "back dey pain",
-    fatigue: "body weak",
-    shortness_of_breath: "breath short",
-    abdominal_pain: "belle dey pain",
-    rash: "rash dey body",
-  },
-};
 
 // ─── Rule-based fallback ──────────────────────────────────────────────────────
 
@@ -418,30 +298,25 @@ DIAGNOSIS RULES:
 - NEVER diagnose with certainty — this is decision support, not a final diagnosis
 - If symptoms are vague or insufficient, still provide the most likely differential with low confidence
 
+LANGUAGE OUTPUT RULES:
+- The patient's language is specified in the user prompt.
+- You MUST write ALL condition names, descriptions, and recommendations in that SAME language.
+- If the language is Yoruba, respond in Yoruba. If Igbo, respond in Igbo. If Hausa, respond in Hausa. If Nigerian Pidgin, respond in Pidgin. If English, respond in English.
+- Do NOT mix languages. Every word of every diagnosis field must be in the patient's language.
+- Entity "text" fields must be the exact phrase from the narrative, keep those as written.
+
 IMPORTANT:
 - Respond ONLY with valid JSON. No markdown, no explanation, no preamble.
-- Always return at least 1 diagnosis and at least 1 entity.
-- Use the patient's language context to interpret the symptoms correctly.`;
+- Always return at least 1 diagnosis and at least 1 entity.`;
 }
 
 function getMedicalJsonPrompt(symptoms, language) {
   const langNames = {
-    en: "English",
-    es: "Spanish",
-    fr: "French",
-    de: "German",
-    zh: "Chinese (Mandarin)",
-    ar: "Arabic",
-    ha: "Hausa",
-    yo: "Yoruba",
-    ig: "Igbo",
+    en:  "English",
+    yo:  "Yoruba",
+    ig:  "Igbo",
+    ha:  "Hausa",
     pcm: "Nigerian Pidgin English",
-    ff: "Fulfulde",
-    kr: "Kanuri",
-    ibb: "Ibibio",
-    tiv: "Tiv",
-    ijc: "Ijaw",
-    bin: "Edo (Bini)",
   };
 
   const langName = langNames[language] || language;
@@ -455,7 +330,9 @@ function getMedicalJsonPrompt(symptoms, language) {
       ? context.candidateConditions.join(", ")
       : "none";
 
-  return `Patient symptom narrative (language: ${langName}):
+  return `RESPOND ENTIRELY IN ${langName.toUpperCase()}. All condition names, descriptions, and recommendations must be written in ${langName}.
+
+Patient symptom narrative (language: ${langName}):
 "${symptoms}"
 
 Medical knowledge bank hints:
