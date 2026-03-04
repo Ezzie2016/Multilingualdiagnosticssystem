@@ -157,16 +157,22 @@ async function extractFromImage(file: File, language: string): Promise<Extractio
     body: JSON.stringify({ image: base64, mimeType, language }),
   });
 
+  // Surface the actual server error message so the user knows what to fix
   if (!response.ok) {
+    let serverMessage = "";
+    try {
+      const errData = await response.json();
+      serverMessage = errData?.error || "";
+    } catch {
+      serverMessage = await response.text().catch(() => "");
+    }
     throw new DocumentExtractionError(
-      "Image analysis failed. Make sure the backend is running and supports image input."
+      serverMessage || `Image analysis failed (HTTP ${response.status}). Check that your server is running and OPENAI_API_KEY is set.`
     );
   }
 
   const data = await response.json();
 
-  // The image endpoint returns a full DiagnosticResult directly
-  // We attach it as JSON so DiagnosticInterface can detect and use it
   return {
     text: data.extractedText || JSON.stringify(data),
     method: "image-llm",
@@ -187,46 +193,27 @@ export async function extractFromDocument(
   }
 
   const ext = file.name.split(".").pop()?.toLowerCase();
-  
-  let result: ExtractionResult;
 
   if (file.type === "text/plain" || ext === "txt") {
-    result = await extractFromTxt(file);
-  } else if (file.type === "application/pdf" || ext === "pdf") {
-    result = await extractFromPdf(file);
-  } else if (
+    return extractFromTxt(file);
+  }
+  if (file.type === "application/pdf" || ext === "pdf") {
+    return extractFromPdf(file);
+  }
+  if (
     file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     ext === "docx"
   ) {
-    result = await extractFromDocx(file);
-  } else if (["jpg", "jpeg", "png", "webp"].includes(ext ?? "") ||
+    return extractFromDocx(file);
+  }
+  if (["jpg", "jpeg", "png", "webp"].includes(ext ?? "") ||
       file.type.startsWith("image/")) {
     return extractFromImage(file, language);
-  } else {
-    throw new DocumentExtractionError(
-      `Unsupported file type. Please upload a PDF, Word document, text file, or image.`
-    );
   }
 
-  // Translate the extracted text
-  const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || "";
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/translate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: result.text, language }),
-    });
-    if (response.ok) {
-      const data = await response.json();
-      if (data.translatedText) {
-        result.text = data.translatedText;
-      }
-    }
-  } catch (error) {
-    console.error("Failed to translate document text:", error);
-  }
-
-  return result;
+  throw new DocumentExtractionError(
+    `Unsupported file type. Please upload a PDF, Word document, text file, or image.`
+  );
 }
 
 // ─── Error messages per language ─────────────────────────────────────────────

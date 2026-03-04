@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useRef, useState } from "react";
-import { FileText, Image, Upload, X, CheckCircle2, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { FileText, Image, Upload, X, CheckCircle2, AlertTriangle, Eye, EyeOff, Camera } from "lucide-react";
 import {
   extractFromDocument,
   UPLOAD_LABELS,
@@ -39,7 +39,12 @@ export function DocumentUpload({ language, onExtracted, onClear, extracted }: Do
   const [processing,  setProcessing]  = useState(false);
   const [error,       setError]       = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef   = useRef<HTMLInputElement>(null);
+  const cameraRef  = useRef<HTMLInputElement>(null);   // capture="environment"
+  const videoRef   = useRef<HTMLVideoElement>(null);
+  const canvasRef  = useRef<HTMLCanvasElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [stream,     setStream]     = useState<MediaStream | null>(null);
   const l = UPLOAD_LABELS[language] ?? UPLOAD_LABELS.en;
 
   // ── Process a file ──────────────────────────────────────────────────────────
@@ -76,6 +81,62 @@ export function DocumentUpload({ language, onExtracted, onClear, extracted }: Do
     setError(null);
     setShowPreview(false);
     onClear();
+  };
+
+  // ── Camera capture ─────────────────────────────────────────────────────────
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  // Mobile path: use <input capture="environment"> (opens native camera)
+  const onCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+    e.target.value = "";
+  };
+
+  // Desktop path: use getUserMedia to show live preview then snap
+  const openDesktopCamera = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+      });
+      setStream(mediaStream);
+      setCameraOpen(true);
+      // attach stream to video element after state update
+      setTimeout(() => {
+        if (videoRef.current) videoRef.current.srcObject = mediaStream;
+      }, 100);
+    } catch {
+      setError("Camera access denied. Please allow camera permissions.");
+    }
+  };
+
+  const closeCamera = () => {
+    stream?.getTracks().forEach((t) => t.stop());
+    setStream(null);
+    setCameraOpen(false);
+  };
+
+  const snapPhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const video  = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d")?.drawImage(video, 0, 0);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const file = new File([blob], "camera-capture.jpg", { type: "image/jpeg" });
+      closeCamera();
+      processFile(file);
+    }, "image/jpeg", 0.92);
+  };
+
+  const handleCameraClick = () => {
+    if (isMobile) {
+      cameraRef.current?.click();
+    } else {
+      openDesktopCamera();
+    }
   };
 
   // ── Render: extracted state ─────────────────────────────────────────────────
@@ -310,6 +371,123 @@ export function DocumentUpload({ language, onExtracted, onClear, extracted }: Do
           </div>
         )}
       </div>
+
+      {/* ── Camera button ──────────────────────────────────────────────── */}
+      <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+        <button
+          onClick={handleCameraClick}
+          disabled={processing}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            padding: "8px 18px",
+            background: "var(--surface)",
+            border: "1px solid var(--border-2)",
+            borderRadius: "var(--radius)",
+            color: "var(--ink-soft)",
+            fontSize: 13,
+            cursor: processing ? "default" : "pointer",
+            transition: "all 0.18s",
+            fontFamily: "var(--font-body)",
+          }}
+          onMouseEnter={(e) => {
+            if (!processing) {
+              (e.currentTarget as HTMLElement).style.borderColor = "var(--teal)";
+              (e.currentTarget as HTMLElement).style.color = "var(--teal)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = "var(--border-2)";
+            (e.currentTarget as HTMLElement).style.color = "var(--ink-soft)";
+          }}
+        >
+          <Camera style={{ width: 15, height: 15 }} />
+          {language === "yo" ? "Ya Aworan" :
+           language === "ig" ? "Were Foto" :
+           language === "ha" ? "Ɗauki Hoto" :
+           language === "pcm" ? "Take Photo" :
+           "Take Photo"}
+        </button>
+
+        {/* Mobile: hidden file input with camera capture */}
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={onCameraCapture}
+          style={{ display: "none" }}
+        />
+      </div>
+
+      {/* ── Desktop camera modal ────────────────────────────────────────── */}
+      {cameraOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.85)",
+            zIndex: 1000,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 16,
+          }}
+        >
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            style={{
+              width: "min(90vw, 640px)",
+              borderRadius: 12,
+              background: "#000",
+            }}
+          />
+          <canvas ref={canvasRef} style={{ display: "none" }} />
+          <div style={{ display: "flex", gap: 12 }}>
+            <button
+              onClick={snapPhoto}
+              style={{
+                padding: "12px 32px",
+                background: "var(--teal)",
+                border: "none",
+                borderRadius: "var(--radius)",
+                color: "#fff",
+                fontSize: 15,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {language === "yo" ? "Ya Aworan" :
+               language === "ig" ? "Were Foto" :
+               language === "ha" ? "Ɗauki Hoto" :
+               language === "pcm" ? "Snap!" :
+               "Capture"}
+            </button>
+            <button
+              onClick={closeCamera}
+              style={{
+                padding: "12px 24px",
+                background: "transparent",
+                border: "1px solid rgba(255,255,255,0.3)",
+                borderRadius: "var(--radius)",
+                color: "#fff",
+                fontSize: 15,
+                cursor: "pointer",
+              }}
+            >
+              {language === "yo" ? "Fagilee" :
+               language === "ig" ? "Kagbuo" :
+               language === "ha" ? "Soke" :
+               language === "pcm" ? "Cancel" :
+               "Cancel"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Error */}
       {error && (

@@ -100,33 +100,18 @@ interface Props {
 const EXAMPLE_PROMPTS: Record<string, string[]> = {
   en: [
     "I have severe chest pain radiating to my left arm for 2 hours with shortness of breath",
-    "Persistent headache and fever for 3 days, mild nausea in the mornings",
-    "Sharp abdominal pain lower right side, started yesterday, getting worse",
-    "Extreme fatigue, dizziness when standing, muscle weakness for 1 week",
   ],
   yo: [
     "Irora àyà lile ti n lọ si apa osi mi fun wakati 2 pẹlu iṣoro imi",
-    "Orififo ati iba fun ọjọ 3, inu riru kekere ni owurọ",
-    "Irora inú lile ni apa isalẹ otun, bẹrẹ lana, n buru sii",
-    "Arẹwèsì nla, ori n yi nigba ti mo dide, ailera iṣan fun ọsẹ 1",
   ],
   ig: [
     "Ọwụwa obi ike na-agba n'aka ekpe m maka awa 2 na iku ume ike",
-    "Isi ọwụwa na ọkụ ahụ maka ụbọchị 3, ọfụfụ afọ n'ụtụtụ",
-    "Mgbu n'afọ n'akụkụ aka nri n'okpuru, bidoro n'echi, na-abawanye",
-    "Aghara ike, isi na-atụrụ mgbe m na-eguzo, ike adịghị n'ahụ maka izu 1",
   ],
   ha: [
     "Ciwon kirji mai tsanani da ke tafiya zuwa hannuna na hagu tsawon sa'o'i 2 tare da wahalar numfashi",
-    "Ciwon kai mai dawwama da zazzabi tsawon kwana 3, ɗan amai a safiya",
-    "Ciwon ciki mai tsini a gefen dama na ƙasa, ya fara jiya, yana ƙara muni",
-    "Gajiya mai tsanani, jiri jiri yayin tashi, rashin karfi na kwana 7",
   ],
   pcm: [
     "My chest dey pain me well well, e dey go my left arm for 2 hours, e hard to breathe",
-    "Head dey pain me and fever dey for 3 days, small belle dey do me for morning",
-    "Sharp pain for right side of my belly down, e start yesterday, e dey worse",
-    "Body weak well well, head dey spin when I stand up, muscle no get power for 1 week",
   ],
 };
 
@@ -148,6 +133,8 @@ export function DiagnosticInterface({
   const [detectedLabel, setDetectedLabel] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isFocused, setIsFocused] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   // Medical search state
   const [searchResults, setSearchResults] = useState<MedicalSearchResult[]>([]);
@@ -529,109 +516,20 @@ export function DiagnosticInterface({
 
       {/* ── Input card ─────────────────────────────────────────────────── */}
       <div
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         style={{
           background: "var(--surface)",
-          border: "1px solid var(--border)",
+          border: isFocused ? "1px solid var(--teal)" : isHovered ? "1px solid var(--border-2)" : "1px solid var(--border)",
           borderRadius: "var(--radius-xl)",
           overflow: "hidden",
-          boxShadow: "var(--shadow-sm)",
+          boxShadow: isFocused 
+            ? "inset 0 0 0 1px var(--teal), 0 0 0 4px rgba(20, 184, 166, 0.15), var(--shadow-lg)" 
+            : isHovered ? "var(--shadow-lg)" : "var(--shadow-sm)",
+          transition: "all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
+          transform: isFocused || isHovered ? "translateY(-2px)" : "none",
         }}
       >
-        {/* Toolbar */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "12px 16px",
-            borderBottom: "1px solid var(--border)",
-            background: "var(--surface-2)",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <span
-            style={{
-              fontSize: 11,
-              color: "var(--ink-muted)",
-              fontFamily: "var(--font-mono)",
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            {t.diagTextareaLabel}
-          </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {detectedLabel && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "4px 10px",
-                  background: "#ccfbf1",
-                  border: "1px solid #5eead4",
-                  borderRadius: 100,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <span style={{ fontSize: 13 }}>🌐</span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontFamily: "var(--font-mono)",
-                    color: "var(--teal)",
-                  }}
-                >
-                  {t.diagAutoDetected} <strong>{detectedLabel}</strong>
-                </span>
-              </div>
-            )}
-            <LanguageSelector
-              language={language}
-              onLanguageChange={handleLanguageChange}
-            />
-
-            {/* Upload button */}
-            <button
-              onClick={() => setUploadOpen(o => !o)}
-              title="Upload a document"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "5px 11px",
-                background: uploadOpen || extractedDoc
-                  ? "var(--teal-light)"
-                  : "var(--surface)",
-                border: uploadOpen || extractedDoc
-                  ? "1px solid var(--teal)"
-                  : "1px solid var(--border-2)",
-                borderRadius: 100,
-                color: uploadOpen || extractedDoc ? "var(--teal)" : "var(--ink-muted)",
-                cursor: "pointer",
-                fontSize: 12,
-                fontFamily: "var(--font-mono)",
-                transition: "all 0.18s",
-                whiteSpace: "nowrap",
-              }}
-            >
-              <Paperclip style={{ width: 13, height: 13 }} />
-              {extractedDoc
-                ? extractedDoc.fileName.slice(0, 16) + (extractedDoc.fileName.length > 16 ? "…" : "")
-                : (language === "yo" ? "Gbe Iwe" : language === "ig" ? "Bulite" : language === "ha" ? "Loda" : language === "pcm" ? "Upload" : "Upload")
-              }
-              <ChevronDown
-                style={{
-                  width: 11,
-                  height: 11,
-                  transform: uploadOpen ? "rotate(180deg)" : "rotate(0deg)",
-                  transition: "transform 0.18s",
-                }}
-              />
-            </button>
-          </div>
-        </div>
 
         {/* ── Upload panel (slides open above textarea) ──────────────────── */}
         {uploadOpen && (
@@ -660,11 +558,16 @@ export function DiagnosticInterface({
         <textarea
           value={symptoms}
           onChange={handleChange}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
           onKeyDown={(e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") handleSubmit();
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSubmit();
+            }
           }}
           placeholder={examples[0]}
-          rows={7}
+          rows={2}
           maxLength={2000}
           style={{
             width: "100%",
@@ -1088,19 +991,6 @@ export function DiagnosticInterface({
         </button>
       </div>
 
-      <p
-        style={{
-          marginTop: 20,
-          fontSize: 12,
-          color: "var(--ink-muted)",
-          lineHeight: 1.6,
-        }}
-      >
-        <strong style={{ color: "var(--amber)", fontWeight: 600 }}>
-          {t.diagNotMedical}
-        </strong>{" "}
-        {t.diagNotMedicalBody}
-      </p>
     </div>
   );
 }

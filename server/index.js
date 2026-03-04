@@ -1,19 +1,5 @@
 const http = require("node:http");
 const { URL } = require("node:url");
-const fs = require("node:fs");
-const path = require("node:path");
-
-// Load .env file manually since dotenv is not installed
-const envPath = path.resolve(process.cwd(), ".env");
-if (fs.existsSync(envPath)) {
-  fs.readFileSync(envPath, "utf-8").split("\n").forEach((line) => {
-    const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
-    if (match) {
-      process.env[match[1]] = match[2].trim();
-    }
-  });
-}
-
 const {
   analyzeWithMedicalBank,
   getKnowledgeContextForPrompt,
@@ -29,7 +15,7 @@ const NLP_PROVIDER = process.env.NLP_PROVIDER || "ollama";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.2:3b";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b";
 const FHIR_TERMINOLOGY_BASE_URL = process.env.FHIR_TERMINOLOGY_BASE_URL || "";
 
 // ─── Condition catalog (rule-based fallback) ──────────────────────────────────
@@ -196,8 +182,12 @@ const conditionCatalog = {
 
 // ─── Rule-based fallback ──────────────────────────────────────────────────────
 
-function buildRuleBasedResponse(symptoms, language) {
-  return analyzeWithMedicalBank(symptoms, language);
+function buildRuleBasedResponse(symptoms, language, degraded = false) {
+  const result = analyzeWithMedicalBank(symptoms, language);
+  if (degraded) {
+    result.degradedMode = true; // frontend reads this to show the indicator
+  }
+  return result;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -505,53 +495,6 @@ async function resolveAnalysis(symptoms, language) {
   throw new Error(`Unsupported NLP_PROVIDER: ${NLP_PROVIDER}`);
 }
 
-async function translateText(text, language) {
-  if (language === "en" || !text) return text;
-
-  const langNames = {
-    en: "English",
-    yo: "Yoruba",
-    ig: "Igbo",
-    ha: "Hausa",
-    pcm: "Nigerian Pidgin English",
-  };
-  const langName = langNames[language] || language;
-  const prompt = `Translate the following medical text into ${langName}. Return ONLY the translated text, nothing else.\n\nText:\n${text}`;
-
-  let translatedText = text;
-        
-  try {
-    if (NLP_PROVIDER === "openai" || (NLP_PROVIDER === "auto" && OPENAI_API_KEY)) {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
-        body: JSON.stringify({
-          model: OPENAI_MODEL,
-          temperature: 0.3,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-      if (response.ok) {
-        const completion = await response.json();
-        translatedText = completion?.choices?.[0]?.message?.content || text;
-      }
-    } else {
-      const response = await fetch(`${OLLAMA_URL}/api/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: OLLAMA_MODEL, prompt, stream: false }),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        translatedText = data?.response || text;
-      }
-    }
-  } catch (error) {
-    console.error("Translation failed:", error.message);
-  }
-  return translatedText.trim();
-}
-
 // ─── HTTP server ──────────────────────────────────────────────────────────────
 
 function sendJson(res, statusCode, data) {
@@ -662,20 +605,7 @@ const server = http.createServer((req, res) => {
           result = await resolveAnalysis(symptoms, language);
         } catch (error) {
           console.error("Falling back to rule-based analysis:", error.message);
-          result = buildRuleBasedResponse(symptoms, language);
-          
-          if (language !== "en") {
-            const isFallbackStrings = result.diagnoses.length === 1 && result.diagnoses[0].confidence === 0.3;
-            if (!isFallbackStrings) {
-              for (const diag of result.diagnoses) {
-                diag.condition = await translateText(diag.condition, language);
-                diag.description = await translateText(diag.description, language);
-                for (let i = 0; i < diag.recommendations.length; i++) {
-                  diag.recommendations[i] = await translateText(diag.recommendations[i], language);
-                }
-              }
-            }
-          }
+          result = buildRuleBasedResponse(symptoms, language, true); // degraded=true
         }
 
         sendJson(res, 200, result);
@@ -687,39 +617,104 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (method === "POST" && pathname === "/api/translate") {
+  // ── POST /api/analyze-image ─────────────────────────────────────────────────
+  // Uses Ollama vision model (llava by default) — fully local, no API key needed.
+  // Recommended models: llava, llava-llama3, llava-phi3
+  // Pull one first:  ollama pull llava
+  if (method === "POST" && pathname === "/api/analyze-image") {
     let body = "";
 
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 5_000_000) req.destroy();
+      if (body.length > 20_000_000) req.destroy(); // 20MB limit
     });
 
     req.on("end", async () => {
       try {
-        const parsed = JSON.parse(body || "{}");
-        const text = String(parsed.text || "").trim();
-        const language = String(parsed.language || "en");
+        const parsed   = JSON.parse(body || "{}");
+        const image    = String(parsed.image    || "").trim();
+        const language = String(parsed.language || "en").trim();
 
-        if (!text) {
-          sendJson(res, 400, { error: "text is required" });
+        if (!image) {
+          sendJson(res, 400, { error: "image (base64) is required" });
           return;
         }
 
-        const langNames = {
-          en: "English",
-          yo: "Yoruba",
-          ig: "Igbo",
-          ha: "Hausa",
-          pcm: "Nigerian Pidgin English",
-        };
-        const langName = langNames[language] || language;
+        // Determine which vision model to use
+        // OLLAMA_VISION_MODEL env var overrides; default is llava
+        const visionModel = process.env.OLLAMA_VISION_MODEL || "llava";
 
-        const translatedText = await translateText(text, language);
+        const langNames = { en: "English", yo: "Yoruba", ig: "Igbo", ha: "Hausa", pcm: "Nigerian Pidgin English" };
+        const langName  = langNames[language] || "English";
 
-        sendJson(res, 200, { translatedText: translatedText.trim() });
-      } catch {
-        sendJson(res, 400, { error: "Invalid JSON body" });
+        const visionPrompt =
+          `${getSystemPrompt()}
+
+LANGUAGE OUTPUT RULES:
+- Respond entirely in ${langName}.
+- All condition names, descriptions, and recommendations must be in ${langName}.
+
+RESPOND ENTIRELY IN ${langName.toUpperCase()}.
+
+This is a medical document image (lab result, prescription, clinic note, or handwritten symptom description).
+
+1. Extract all visible medical text — symptoms, diagnoses, medications, test results, dates.
+2. Use the extracted information to perform differential diagnosis.
+3. Return extracted text in the "extractedText" field.
+
+Return ONLY this JSON with no other text:
+{
+  "extractedText": "all readable text from the image",
+  "entities": [
+    {"text": "exact phrase", "type": "symptom|body_part|duration|severity", "confidence": 0.0}
+  ],
+  "diagnoses": [
+    {
+      "condition": "Specific Medical Condition",
+      "confidence": 0.0,
+      "description": "2-3 sentence clinical description in ${langName}.",
+      "recommendations": ["action 1", "action 2", "action 3", "action 4"]
+    }
+  ]
+}`;
+
+        const ollamaResponse = await fetch(`${OLLAMA_URL}/api/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model:  visionModel,
+            prompt: visionPrompt,
+            images: [image],   // Ollama accepts raw base64 (no data URL prefix)
+            stream: false,
+            options: { temperature: 0.3 },
+          }),
+        });
+
+        if (!ollamaResponse.ok) {
+          const errText = await ollamaResponse.text();
+          // Common cause: model not pulled yet
+          if (ollamaResponse.status === 404) {
+            throw new Error(
+              `Vision model "${visionModel}" is not installed. Run: ollama pull ${visionModel}`
+            );
+          }
+          throw new Error(`Ollama vision error ${ollamaResponse.status}: ${errText}`);
+        }
+
+        const ollamaData = await ollamaResponse.json();
+        const parsed2    = extractJsonObject(ollamaData?.response || "");
+
+        const result = normalizeModelResponse(
+          parsed2.extractedText || "Image document",
+          language,
+          parsed2,
+        );
+        result.extractedText = parsed2.extractedText || "";
+
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error("Image analysis error:", err.message);
+        sendJson(res, 500, { error: err.message || "Image analysis failed" });
       }
     });
 
@@ -729,6 +724,6 @@ const server = http.createServer((req, res) => {
   sendJson(res, 404, { error: "Not found" });
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`NLP API server running at http://127.0.0.1:${PORT}`);
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

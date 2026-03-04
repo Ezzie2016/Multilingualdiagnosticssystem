@@ -41,6 +41,17 @@ const SCRIPT_RANGES: Array<{ pattern: RegExp; code: string; label: string }> = [
 
 const STOPWORDS: Array<{ code: string; label: string; words: Set<string> }> = [
   {
+    code: 'en', label: 'English',
+    words: new Set([
+      'i', 'have', 'am', 'is', 'are', 'my', 'feel', 'since', 'days', 'hours',
+      'pain', 'fever', 'head', 'stomach', 'body', 'very', 'also', 'but',
+      'that', 'with', 'for', 'a', 'an', 'the', 'without', 'was',
+      'when', 'how', 'what', 'no', 'yes', 'he', 'she', 'we', 'they', 'it',
+      'not', 'and', 'or', 'in', 'on', 'at', 'to', 'of', 'from', 'hurt',
+      'hurts', 'sick', 'cough', 'cold', 'flu', 'symptoms', 'doctor',
+    ]),
+  },
+  {
     code: 'es', label: 'Español',
     words: new Set([
       'tengo', 'me', 'siento', 'tiene', 'desde', 'hace', 'días', 'horas',
@@ -129,12 +140,12 @@ function tokenise(text: string): string[] {
 
 /**
  * @param text   Raw textarea value
- * @param minLen Minimum character length before attempting detection (default 15)
+ * @param minLen Minimum character length before attempting detection (default 6)
  * @returns      DetectionResult or null if confidence is too low
  */
 export function detectLanguage(
   text: string,
-  minLen = 15,
+  minLen = 6,
 ): DetectionResult | null {
   const trimmed = text.trim();
   if (trimmed.length < minLen) return null;
